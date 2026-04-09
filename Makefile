@@ -4,12 +4,12 @@
 BIN ?= terraform-provider-openwebui
 GO ?= go
 BIN_DIR ?= $(CURDIR)/bin
-VERSION ?= 2.0.0
+VERSION ?= 2.7.3
 OS ?= $(shell $(GO) env GOOS)
 ARCH ?= $(shell $(GO) env GOARCH)
 LDFLAGS ?= -X github.com/nickcecere/terraform-provider-openwebui/internal/provider.Version=$(VERSION)
 
-LOCAL_REGISTRY_ROOT ?= $(BIN_DIR)/registry.terraform.io/nickcecere/openwebui/$(VERSION)/$(OS)_$(ARCH)
+LOCAL_REGISTRY_ROOT ?= $(HOME)/.terraform.d/plugins/local/nickcecere/openwebui/$(VERSION)/$(OS)_$(ARCH)
 LOCAL_PLUGIN_NAME ?= terraform-provider-openwebui_v$(VERSION)
 
 build:
