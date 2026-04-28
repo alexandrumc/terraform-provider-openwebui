@@ -61,6 +61,7 @@ type modelCapabilitiesModel struct {
 	Citations       types.Bool `tfsdk:"citations"`
 	StatusUpdates   types.Bool `tfsdk:"status_updates"`
 	Usage           types.Bool `tfsdk:"usage"`
+	BuiltinTools    types.Bool `tfsdk:"builtin_tools"`
 }
 
 // modelParamsModel captures configurable model parameters.
@@ -269,6 +270,12 @@ func (r *modelResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 					"usage": schema.BoolAttribute{
 						Optional:      true,
 						Computed:      true,
+						PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"builtin_tools": schema.BoolAttribute{
+						Optional:      true,
+						Computed:      true,
+						Description:   "Enable or disable built-in tools for this model.",
 						PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 					},
 				},
@@ -830,6 +837,9 @@ func expandModelCapabilities(caps *modelCapabilitiesModel) map[string]any {
 	if !caps.Usage.IsNull() && !caps.Usage.IsUnknown() {
 		result["usage"] = caps.Usage.ValueBool()
 	}
+	if !caps.BuiltinTools.IsNull() && !caps.BuiltinTools.IsUnknown() {
+		result["builtin_tools"] = caps.BuiltinTools.ValueBool()
+	}
 
 	return result
 }
@@ -1149,6 +1159,7 @@ func flattenModelCapabilities(data map[string]any) *modelCapabilitiesModel {
 		Citations:       types.BoolNull(),
 		StatusUpdates:   types.BoolNull(),
 		Usage:           types.BoolNull(),
+		BuiltinTools:    types.BoolNull(),
 	}
 
 	if data == nil {
@@ -1178,6 +1189,9 @@ func flattenModelCapabilities(data map[string]any) *modelCapabilitiesModel {
 	}
 	if value, ok := toBoolValue(data["usage"]); ok {
 		caps.Usage = types.BoolValue(value)
+	}
+	if value, ok := toBoolValue(data["builtin_tools"]); ok {
+		caps.BuiltinTools = types.BoolValue(value)
 	}
 
 	return caps
