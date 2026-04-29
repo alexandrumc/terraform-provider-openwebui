@@ -159,7 +159,6 @@ func (r *modelResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"updated_at": schema.Int64Attribute{
 				Computed:      true,
 				Description:   "Unix timestamp indicating the last update time.",
-				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 			"meta_additional_json": schema.StringAttribute{
 				Optional:      true,

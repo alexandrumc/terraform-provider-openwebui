@@ -140,7 +140,6 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"updated_at": schema.StringAttribute{
 				Computed:      true,
 				Description:   "Last update date assigned by Open WebUI (YYYY-MM-DD).",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 		},
 	}
