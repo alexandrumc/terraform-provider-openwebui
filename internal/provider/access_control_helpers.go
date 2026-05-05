@@ -14,23 +14,15 @@ import (
 )
 
 type accessGrantModel struct {
-	ID            types.String `tfsdk:"id"`
 	Permission    types.String `tfsdk:"permission"`
 	PrincipalID   types.String `tfsdk:"principal_id"`
 	PrincipalType types.String `tfsdk:"principal_type"`
-	ResourceType  types.String `tfsdk:"resource_type"`
-	ResourceID    types.String `tfsdk:"resource_id"`
-	CreatedAt     types.Int64  `tfsdk:"created_at"`
 }
 
 var accessGrantAttrTypes = map[string]attr.Type{
-	"id":             types.StringType,
 	"permission":     types.StringType,
 	"principal_id":   types.StringType,
 	"principal_type": types.StringType,
-	"resource_type":  types.StringType,
-	"resource_id":    types.StringType,
-	"created_at":     types.Int64Type,
 }
 
 var accessGrantObjectType = types.ObjectType{AttrTypes: accessGrantAttrTypes}
@@ -145,6 +137,7 @@ func (r *userResolver) toLabel(ctx context.Context, id string) string {
 
 // expandAccessGrants resolves group names and user emails/usernames to IDs for the API payload.
 func expandAccessGrants(ctx context.Context, apiClient *client.Client, list types.List, attribute path.Path, diags *diag.Diagnostics) []client.AccessGrant {
+	fmt.Printf("access grant list is %v\n", list)
 	if list.IsNull() || list.IsUnknown() {
 		return nil
 	}
@@ -231,13 +224,9 @@ func flattenAccessGrants(ctx context.Context, apiClient *client.Client, grants [
 		}
 
 		models = append(models, accessGrantModel{
-			ID:            types.StringValue(g.ID),
 			Permission:    types.StringValue(g.Permission),
 			PrincipalID:   types.StringValue(principalLabel),
 			PrincipalType: types.StringValue(g.PrincipalType),
-			ResourceType:  types.StringValue(g.ResourceType),
-			ResourceID:    types.StringValue(g.ResourceID),
-			CreatedAt:     types.Int64Value(g.CreatedAt),
 		})
 	}
 

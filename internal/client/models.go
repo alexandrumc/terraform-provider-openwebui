@@ -14,7 +14,7 @@ type ModelForm struct {
 	Params        map[string]any `json:"params"`
 	BaseModelID   *string        `json:"base_model_id,omitempty"`
 	IsActive      *bool          `json:"is_active,omitempty"`
-	AccessGrants  []AccessGrant  `json:"access_grants,omitempty"`
+	AccessGrants  []AccessGrant  `json:"access_grants"`
 }
 
 // ModelResponse captures details returned by the model endpoints.
@@ -26,7 +26,7 @@ type ModelResponse struct {
 	Params        map[string]any `json:"params"`
 	BaseModelID   *string        `json:"base_model_id,omitempty"`
 	IsActive      bool           `json:"is_active"`
-	AccessGrants  []AccessGrant  `json:"access_grants,omitempty"`
+	AccessGrants  []AccessGrant  `json:"access_grants"`
 	CreatedAt     int64          `json:"created_at"`
 	UpdatedAt     int64          `json:"updated_at"`
 }

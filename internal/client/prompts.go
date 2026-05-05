@@ -27,7 +27,7 @@ type PromptForm struct {
 	Command       string         `json:"command"`
 	Title         string         `json:"title"`
 	Content       string         `json:"content"`
-	AccessGrants  []AccessGrant  `json:"access_grants,omitempty"`
+	AccessGrants  []AccessGrant  `json:"access_grants"`
 }
 
 // PromptModel is returned by the prompt endpoints.
@@ -37,7 +37,7 @@ type PromptModel struct {
 	Content       string         `json:"content"`
 	Timestamp     int64          `json:"timestamp"`
 	UserID        string         `json:"user_id"`
-	AccessGrants  []AccessGrant  `json:"access_grants,omitempty"`
+	AccessGrants  []AccessGrant  `json:"access_grants"`
 }
 
 // CreatePrompt registers a new prompt.
