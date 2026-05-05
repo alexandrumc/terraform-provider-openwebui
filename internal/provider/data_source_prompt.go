@@ -6,7 +6,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/nickcecere/terraform-provider-openwebui/internal/client"
 )
@@ -52,15 +51,20 @@ func (d *promptDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 				Computed:    true,
 				Description: "Prompt content text.",
 			},
-			"read_groups": schema.ListAttribute{
-				ElementType: types.StringType,
+			"access_grants": schema.ListNestedAttribute{
 				Computed:    true,
-				Description: "Group names granted read access.",
-			},
-			"write_groups": schema.ListAttribute{
-				ElementType: types.StringType,
-				Computed:    true,
-				Description: "Group names granted write access.",
+				Description: "Access grants controlling who can read or write the prompt.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"permission":     schema.StringAttribute{Computed: true, Description: "Permission level: \"read\" or \"write\"."},
+						"principal_id":   schema.StringAttribute{Computed: true, Description: "Group name or user email/username."},
+						"principal_type": schema.StringAttribute{Computed: true, Description: "Principal type: \"group\" or \"user\"."},
+						"id":             schema.StringAttribute{Computed: true, Description: "Server-assigned grant identifier."},
+						"resource_type":  schema.StringAttribute{Computed: true, Description: "Resource type this grant applies to."},
+						"resource_id":    schema.StringAttribute{Computed: true, Description: "Resource identifier this grant applies to."},
+						"created_at":     schema.Int64Attribute{Computed: true, Description: "Unix timestamp when the grant was created."},
+					},
+				},
 			},
 			"timestamp": schema.StringAttribute{
 				Computed:    true,

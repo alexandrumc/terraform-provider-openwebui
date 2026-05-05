@@ -42,8 +42,7 @@ type promptResourceModel struct {
 	Command     types.String `tfsdk:"command"`
 	Title       types.String `tfsdk:"title"`
 	Content     types.String `tfsdk:"content"`
-	ReadGroups  types.List   `tfsdk:"read_groups"`
-	WriteGroups types.List   `tfsdk:"write_groups"`
+	AccessGrants types.List  `tfsdk:"access_grants"`
 	Timestamp   types.String `tfsdk:"timestamp"`
 	UserID      types.String `tfsdk:"user_id"`
 }
@@ -83,19 +82,22 @@ func (r *promptResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Required:    true,
 				Description: "Prompt content text.",
 			},
-			"read_groups": schema.ListAttribute{
-				ElementType:   types.StringType,
+			"access_grants": schema.ListNestedAttribute{
 				Optional:      true,
 				Computed:      true,
-				Description:   "Group names or IDs granted read access to the prompt.",
+				Description:   "Access grants controlling who can read or write the prompt.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
-			},
-			"write_groups": schema.ListAttribute{
-				ElementType:   types.StringType,
-				Optional:      true,
-				Computed:      true,
-				Description:   "Group names or IDs granted write access to the prompt (also receive read access).",
-				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"permission":     schema.StringAttribute{Required: true, Description: "Permission level: \"read\" or \"write\"."},
+						"principal_id":   schema.StringAttribute{Required: true, Description: "Group name (for groups) or user email/username (for users). Use \"*\" to grant all users."},
+						"principal_type": schema.StringAttribute{Required: true, Description: "Principal type: \"group\" or \"user\"."},
+						"id":             schema.StringAttribute{Computed: true, Description: "Server-assigned grant identifier."},
+						"resource_type":  schema.StringAttribute{Computed: true, Description: "Resource type this grant applies to."},
+						"resource_id":    schema.StringAttribute{Computed: true, Description: "Resource identifier this grant applies to."},
+						"created_at":     schema.Int64Attribute{Computed: true, Description: "Unix timestamp when the grant was created."},
+					},
+				},
 			},
 			"timestamp": schema.StringAttribute{
 				Computed:      true,
@@ -141,12 +143,7 @@ func (r *promptResource) Create(ctx context.Context, req resource.CreateRequest,
 		Content: plan.Content.ValueString(),
 	}
 
-	readNames := expandStringList(ctx, plan.ReadGroups, path.Root("read_groups"), &resp.Diagnostics)
-	writeNames := expandStringList(ctx, plan.WriteGroups, path.Root("write_groups"), &resp.Diagnostics)
-	readIDs := resolveGroupNamesToIDs(ctx, r.client, readNames, path.Root("read_groups"), &resp.Diagnostics)
-	writeIDs := resolveGroupNamesToIDs(ctx, r.client, writeNames, path.Root("write_groups"), &resp.Diagnostics)
-
-	form.AccessControl = buildAccessControl(readIDs, writeIDs)
+	form.AccessGrants = expandAccessGrants(ctx, r.client, plan.AccessGrants, path.Root("access_grants"), &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -231,12 +228,7 @@ func (r *promptResource) Update(ctx context.Context, req resource.UpdateRequest,
 		Content: plan.Content.ValueString(),
 	}
 
-	readNames := expandStringList(ctx, plan.ReadGroups, path.Root("read_groups"), &resp.Diagnostics)
-	writeNames := expandStringList(ctx, plan.WriteGroups, path.Root("write_groups"), &resp.Diagnostics)
-	readIDs := resolveGroupNamesToIDs(ctx, r.client, readNames, path.Root("read_groups"), &resp.Diagnostics)
-	writeIDs := resolveGroupNamesToIDs(ctx, r.client, writeNames, path.Root("write_groups"), &resp.Diagnostics)
-
-	form.AccessControl = buildAccessControl(readIDs, writeIDs)
+	form.AccessGrants = expandAccessGrants(ctx, r.client, plan.AccessGrants, path.Root("access_grants"), &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -292,39 +284,15 @@ func (r *promptResource) ImportState(ctx context.Context, req resource.ImportSta
 func promptResponseToModel(ctx context.Context, apiClient *client.Client, resp *client.PromptModel) (promptResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	readIDs := extractGroupIDsFromAccessControl(resp.AccessControl, "read")
-	writeIDs := extractGroupIDsFromAccessControl(resp.AccessControl, "write")
-
-	readNames, readDiags := fetchGroupNamesForIDs(ctx, apiClient, readIDs)
-	diags.Append(readDiags...)
-	writeNames, writeDiags := fetchGroupNamesForIDs(ctx, apiClient, writeIDs)
-	diags.Append(writeDiags...)
-
-	readList := types.ListNull(types.StringType)
-	if len(readNames) > 0 {
-		l, listDiags := types.ListValueFrom(ctx, types.StringType, readNames)
-		diags.Append(listDiags...)
-		if !listDiags.HasError() {
-			readList = l
-		}
-	}
-
-	writeList := types.ListNull(types.StringType)
-	if len(writeNames) > 0 {
-		l, listDiags := types.ListValueFrom(ctx, types.StringType, writeNames)
-		diags.Append(listDiags...)
-		if !listDiags.HasError() {
-			writeList = l
-		}
-	}
+	grantsList, grantDiags := flattenAccessGrants(ctx, apiClient, resp.AccessGrants)
+	diags.Append(grantDiags...)
 
 	state := promptResourceModel{
 		ID:          types.StringValue(resp.Command),
 		Command:     types.StringValue(resp.Command),
 		Title:       types.StringValue(resp.Title),
 		Content:     types.StringValue(resp.Content),
-		ReadGroups:  readList,
-		WriteGroups: writeList,
+		AccessGrants: grantsList,
 		Timestamp:   formatDateValue(resp.Timestamp),
 		UserID:      types.StringValue(resp.UserID),
 	}

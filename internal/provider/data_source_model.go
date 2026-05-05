@@ -76,15 +76,20 @@ func (d *modelDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				Computed:    true,
 				Description: "Raw JSON fragment preserving parameter fields not modelled directly.",
 			},
-			"read_groups": schema.ListAttribute{
-				ElementType: types.StringType,
+			"access_grants": schema.ListNestedAttribute{
 				Computed:    true,
-				Description: "Group names granted read access to the model.",
-			},
-			"write_groups": schema.ListAttribute{
-				ElementType: types.StringType,
-				Computed:    true,
-				Description: "Group names granted write access to the model.",
+				Description: "Access grants controlling who can read or write the model.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"permission":     schema.StringAttribute{Computed: true, Description: "Permission level: \"read\" or \"write\"."},
+						"principal_id":   schema.StringAttribute{Computed: true, Description: "Group name or user email/username."},
+						"principal_type": schema.StringAttribute{Computed: true, Description: "Principal type: \"group\" or \"user\"."},
+						"id":             schema.StringAttribute{Computed: true, Description: "Server-assigned grant identifier."},
+						"resource_type":  schema.StringAttribute{Computed: true, Description: "Resource type this grant applies to."},
+						"resource_id":    schema.StringAttribute{Computed: true, Description: "Resource identifier this grant applies to."},
+						"created_at":     schema.Int64Attribute{Computed: true, Description: "Unix timestamp when the grant was created."},
+					},
+				},
 			},
 			"params": schema.SingleNestedAttribute{
 				Computed:    true,

@@ -34,8 +34,7 @@ type toolResourceModel struct {
 	Content      types.String `tfsdk:"content"`
 	Description  types.String `tfsdk:"description"`
 	ManifestJSON types.String `tfsdk:"manifest_json"`
-	ReadGroups   types.List   `tfsdk:"read_groups"`
-	WriteGroups  types.List   `tfsdk:"write_groups"`
+	AccessGrants types.List   `tfsdk:"access_grants"`
 	SpecsJSON    types.String `tfsdk:"specs_json"`
 	UserID       types.String `tfsdk:"user_id"`
 	CreatedAt    types.Int64  `tfsdk:"created_at"`
@@ -90,19 +89,22 @@ func (r *toolResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Description:   "JSON manifest for the tool.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"read_groups": schema.ListAttribute{
-				ElementType:   types.StringType,
+			"access_grants": schema.ListNestedAttribute{
 				Optional:      true,
 				Computed:      true,
-				Description:   "Group names or IDs granted read access to the tool.",
+				Description:   "Access grants controlling who can read or write the tool.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
-			},
-			"write_groups": schema.ListAttribute{
-				ElementType:   types.StringType,
-				Optional:      true,
-				Computed:      true,
-				Description:   "Group names or IDs granted write access to the tool.",
-				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"permission":     schema.StringAttribute{Required: true, Description: "Permission level: \"read\" or \"write\"."},
+						"principal_id":   schema.StringAttribute{Required: true, Description: "Group name (for groups) or user email/username (for users). Use \"*\" to grant all users."},
+						"principal_type": schema.StringAttribute{Required: true, Description: "Principal type: \"group\" or \"user\"."},
+						"id":             schema.StringAttribute{Computed: true, Description: "Server-assigned grant identifier."},
+						"resource_type":  schema.StringAttribute{Computed: true, Description: "Resource type this grant applies to."},
+						"resource_id":    schema.StringAttribute{Computed: true, Description: "Resource identifier this grant applies to."},
+						"created_at":     schema.Int64Attribute{Computed: true, Description: "Unix timestamp when the grant was created."},
+					},
+				},
 			},
 			"specs_json": schema.StringAttribute{
 				Computed:    true,
@@ -250,7 +252,7 @@ func (r *toolResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		UserID:        updated.UserID,
 		Name:          updated.Name,
 		Meta:          updated.Meta,
-		AccessControl: updated.AccessControl,
+		AccessGrants:  updated.AccessGrants,
 		UpdatedAt:     updated.UpdatedAt,
 		CreatedAt:     updated.CreatedAt,
 	}
@@ -309,17 +311,12 @@ func toolFormFromPlan(ctx context.Context, apiClient *client.Client, plan toolRe
 		Manifest:    manifest,
 	}
 
-	readNames := expandStringList(ctx, plan.ReadGroups, path.Root("read_groups"), &diags)
-	writeNames := expandStringList(ctx, plan.WriteGroups, path.Root("write_groups"), &diags)
-	readIDs := resolveGroupNamesToIDs(ctx, apiClient, readNames, path.Root("read_groups"), &diags)
-	writeIDs := resolveGroupNamesToIDs(ctx, apiClient, writeNames, path.Root("write_groups"), &diags)
-
 	return client.ToolForm{
 		ID:            plan.ToolID.ValueString(),
 		Name:          plan.Name.ValueString(),
 		Content:       plan.Content.ValueString(),
 		Meta:          meta,
-		AccessControl: buildAccessControl(readIDs, writeIDs),
+		AccessGrants:  expandAccessGrants(ctx, apiClient, plan.AccessGrants, path.Root("access_grants"), &diags),
 	}, diags
 }
 
@@ -349,18 +346,8 @@ func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *
 		return toolResourceModel{}, diags
 	}
 
-	readIDs := extractGroupIDsFromAccessControl(access.AccessControl, "read")
-	writeIDs := extractGroupIDsFromAccessControl(access.AccessControl, "write")
-
-	readNames, readDiags := fetchGroupNamesForIDs(ctx, apiClient, readIDs)
-	diags.Append(readDiags...)
-	writeNames, writeDiags := fetchGroupNamesForIDs(ctx, apiClient, writeIDs)
-	diags.Append(writeDiags...)
-
-	readList, readListDiags := flattenStringSlice(ctx, readNames)
-	diags.Append(readListDiags...)
-	writeList, writeListDiags := flattenStringSlice(ctx, writeNames)
-	diags.Append(writeListDiags...)
+	grantsList, grantDiags := flattenAccessGrants(ctx, apiClient, access.AccessGrants)
+	diags.Append(grantDiags...)
 
 	manifestJSON, err := encodeOptionalJSON(access.Meta.Manifest)
 	if err != nil {
@@ -391,8 +378,7 @@ func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *
 		Content:      contentValue,
 		Description:  description,
 		ManifestJSON: manifestJSON,
-		ReadGroups:   readList,
-		WriteGroups:  writeList,
+		AccessGrants: grantsList,
 		SpecsJSON:    specsJSON,
 		UserID:       types.StringValue(access.UserID),
 		CreatedAt:    types.Int64Value(access.CreatedAt),
