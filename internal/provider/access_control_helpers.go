@@ -137,7 +137,6 @@ func (r *userResolver) toLabel(ctx context.Context, id string) string {
 
 // expandAccessGrants resolves group names and user emails/usernames to IDs for the API payload.
 func expandAccessGrants(ctx context.Context, apiClient *client.Client, list types.List, attribute path.Path, diags *diag.Diagnostics) []client.AccessGrant {
-	fmt.Printf("access grant list is %v\n", list)
 	if list.IsNull() || list.IsUnknown() {
 		return nil
 	}
