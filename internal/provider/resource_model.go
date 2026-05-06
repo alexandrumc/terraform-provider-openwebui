@@ -40,8 +40,7 @@ type modelResourceModel struct {
 	MetaAdditionalJSON   types.String            `tfsdk:"meta_additional_json"`
 	Params               *modelParamsModel       `tfsdk:"params"`
 	ParamsAdditionalJSON types.String            `tfsdk:"params_additional_json"`
-	ReadGroups           types.List              `tfsdk:"read_groups"`
-	WriteGroups          types.List              `tfsdk:"write_groups"`
+	AccessGrants         types.List              `tfsdk:"access_grants"`
 	ProfileImageURL      types.String            `tfsdk:"profile_image_url"`
 	Description          types.String            `tfsdk:"description"`
 	SuggestionPrompts    types.List              `tfsdk:"suggestion_prompts"`
@@ -172,19 +171,18 @@ func (r *modelResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Description:   "Raw JSON fragment merged into the params payload for fields not covered by dedicated arguments.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"read_groups": schema.ListAttribute{
-				ElementType:   types.StringType,
+			"access_grants": schema.ListNestedAttribute{
 				Optional:      true,
 				Computed:      true,
-				Description:   "Group names or IDs granted read access to the model.",
+				Description:   "Access grants controlling who can read or write the model.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
-			},
-			"write_groups": schema.ListAttribute{
-				ElementType:   types.StringType,
-				Optional:      true,
-				Computed:      true,
-				Description:   "Group names or IDs granted write access to the model.",
-				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"permission":     schema.StringAttribute{Required: true, Description: "Permission level: \"read\" or \"write\"."},
+						"principal_id":   schema.StringAttribute{Required: true, Description: "Group name (for groups) or user email/username (for users). Use \"*\" to grant all users."},
+						"principal_type": schema.StringAttribute{Required: true, Description: "Principal type: \"group\" or \"user\"."},
+					},
+				},
 			},
 			"profile_image_url": schema.StringAttribute{
 				Optional:      true,
@@ -381,11 +379,7 @@ func (r *modelResource) Create(ctx context.Context, req resource.CreateRequest, 
 		Params: copyStringAnyMap(paramsMap),
 	}
 
-	readNames := expandStringList(ctx, plan.ReadGroups, path.Root("read_groups"), &resp.Diagnostics)
-	writeNames := expandStringList(ctx, plan.WriteGroups, path.Root("write_groups"), &resp.Diagnostics)
-	readIDs := resolveGroupNamesToIDs(ctx, r.client, readNames, path.Root("read_groups"), &resp.Diagnostics)
-	writeIDs := resolveGroupNamesToIDs(ctx, r.client, writeNames, path.Root("write_groups"), &resp.Diagnostics)
-	form.AccessControl = buildAccessControl(readIDs, writeIDs)
+	form.AccessGrants = expandAccessGrants(ctx, r.client, plan.AccessGrants, path.Root("access_grants"), &resp.Diagnostics)
 
 	if !plan.BaseModelID.IsNull() && !plan.BaseModelID.IsUnknown() && plan.BaseModelID.ValueString() != "" {
 		base := plan.BaseModelID.ValueString()
@@ -491,11 +485,7 @@ func (r *modelResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		Params: copyStringAnyMap(paramsMap),
 	}
 
-	readNames := expandStringList(ctx, plan.ReadGroups, path.Root("read_groups"), &resp.Diagnostics)
-	writeNames := expandStringList(ctx, plan.WriteGroups, path.Root("write_groups"), &resp.Diagnostics)
-	readIDs := resolveGroupNamesToIDs(ctx, r.client, readNames, path.Root("read_groups"), &resp.Diagnostics)
-	writeIDs := resolveGroupNamesToIDs(ctx, r.client, writeNames, path.Root("write_groups"), &resp.Diagnostics)
-	form.AccessControl = buildAccessControl(readIDs, writeIDs)
+	form.AccessGrants = expandAccessGrants(ctx, r.client, plan.AccessGrants, path.Root("access_grants"), &resp.Diagnostics)
 
 	if !plan.BaseModelID.IsNull() && !plan.BaseModelID.IsUnknown() && plan.BaseModelID.ValueString() != "" {
 		base := plan.BaseModelID.ValueString()
@@ -570,18 +560,8 @@ func modelResponseToModel(ctx context.Context, apiClient *client.Client, resp *c
 	metaState, metaAdditional, metaDiags := flattenModelMeta(ctx, resp.Meta)
 	diags.Append(metaDiags...)
 
-	readIDs := extractGroupIDsFromAccessControl(resp.AccessControl, "read")
-	writeIDs := extractGroupIDsFromAccessControl(resp.AccessControl, "write")
-
-	readNames, readDiags := fetchGroupNamesForIDs(ctx, apiClient, readIDs)
-	diags.Append(readDiags...)
-	writeNames, writeDiags := fetchGroupNamesForIDs(ctx, apiClient, writeIDs)
-	diags.Append(writeDiags...)
-
-	readList, readListDiags := flattenStringSlice(ctx, readNames)
-	diags.Append(readListDiags...)
-	writeList, writeListDiags := flattenStringSlice(ctx, writeNames)
-	diags.Append(writeListDiags...)
+	grantsList, grantDiags := flattenAccessGrants(ctx, apiClient, resp.AccessGrants)
+	diags.Append(grantDiags...)
 
 	state := modelResourceModel{
 		ID:                   types.StringValue(resp.ID),
@@ -594,8 +574,7 @@ func modelResponseToModel(ctx context.Context, apiClient *client.Client, resp *c
 		Params:               paramsModel,
 		ParamsAdditionalJSON: paramsAdditional,
 		MetaAdditionalJSON:   metaAdditional,
-		ReadGroups:           readList,
-		WriteGroups:          writeList,
+		AccessGrants:         grantsList,
 		ProfileImageURL:      metaState.ProfileImageURL,
 		Description:          metaState.Description,
 		SuggestionPrompts:    metaState.SuggestionPrompts,

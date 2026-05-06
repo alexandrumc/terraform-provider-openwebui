@@ -67,15 +67,16 @@ func (d *knowledgeDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 				Computed:    true,
 				Description: "JSON payload describing metadata for the knowledge entry.",
 			},
-			"read_groups": schema.ListAttribute{
-				ElementType: types.StringType,
+			"access_grants": schema.ListNestedAttribute{
 				Computed:    true,
-				Description: "Group names granted read access.",
-			},
-			"write_groups": schema.ListAttribute{
-				ElementType: types.StringType,
-				Computed:    true,
-				Description: "Group names granted write access.",
+				Description: "Access grants controlling who can read or write the knowledge entry.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"permission":     schema.StringAttribute{Computed: true, Description: "Permission level: \"read\" or \"write\"."},
+						"principal_id":   schema.StringAttribute{Computed: true, Description: "Group name or user email/username."},
+						"principal_type": schema.StringAttribute{Computed: true, Description: "Principal type: \"group\" or \"user\"."},
+					},
+				},
 			},
 			"created_at": schema.StringAttribute{
 				Computed:    true,

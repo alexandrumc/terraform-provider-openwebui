@@ -27,8 +27,7 @@ type toolDataSourceModel struct {
 	Content      types.String `tfsdk:"content"`
 	Description  types.String `tfsdk:"description"`
 	ManifestJSON types.String `tfsdk:"manifest_json"`
-	ReadGroups   types.List   `tfsdk:"read_groups"`
-	WriteGroups  types.List   `tfsdk:"write_groups"`
+	AccessGrants types.List   `tfsdk:"access_grants"`
 	SpecsJSON    types.String `tfsdk:"specs_json"`
 	UserID       types.String `tfsdk:"user_id"`
 	CreatedAt    types.Int64  `tfsdk:"created_at"`
@@ -74,15 +73,16 @@ func (d *toolDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 				Computed:    true,
 				Description: "JSON manifest for the tool.",
 			},
-			"read_groups": schema.ListAttribute{
-				ElementType: types.StringType,
+			"access_grants": schema.ListNestedAttribute{
 				Computed:    true,
-				Description: "Group names or IDs granted read access to the tool.",
-			},
-			"write_groups": schema.ListAttribute{
-				ElementType: types.StringType,
-				Computed:    true,
-				Description: "Group names or IDs granted write access to the tool.",
+				Description: "Access grants controlling who can read or write the tool.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"permission":     schema.StringAttribute{Computed: true, Description: "Permission level: \"read\" or \"write\"."},
+						"principal_id":   schema.StringAttribute{Computed: true, Description: "Group name or user email/username."},
+						"principal_type": schema.StringAttribute{Computed: true, Description: "Principal type: \"group\" or \"user\"."},
+					},
+				},
 			},
 			"specs_json": schema.StringAttribute{
 				Computed:    true,

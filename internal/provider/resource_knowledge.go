@@ -31,8 +31,7 @@ type knowledgeResourceModel struct {
 	Description types.String `tfsdk:"description"`
 	DataJSON    types.String `tfsdk:"data_json"`
 	MetaJSON    types.String `tfsdk:"meta_json"`
-	ReadGroups  types.List   `tfsdk:"read_groups"`
-	WriteGroups types.List   `tfsdk:"write_groups"`
+	AccessGrants types.List  `tfsdk:"access_grants"`
 	CreatedAt   types.String `tfsdk:"created_at"`
 	UpdatedAt   types.String `tfsdk:"updated_at"`
 	UserID      types.String `tfsdk:"user_id"`
@@ -77,19 +76,18 @@ func (r *knowledgeResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description:   "JSON payload describing metadata for the knowledge entry.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"read_groups": schema.ListAttribute{
-				ElementType:   types.StringType,
+			"access_grants": schema.ListNestedAttribute{
 				Optional:      true,
 				Computed:      true,
-				Description:   "Group names or IDs granted read access to the knowledge entry.",
+				Description:   "Access grants controlling who can read or write the knowledge entry.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
-			},
-			"write_groups": schema.ListAttribute{
-				ElementType:   types.StringType,
-				Optional:      true,
-				Computed:      true,
-				Description:   "Group names or IDs granted write access to the knowledge entry.",
-				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"permission":     schema.StringAttribute{Required: true, Description: "Permission level: \"read\" or \"write\"."},
+						"principal_id":   schema.StringAttribute{Required: true, Description: "Group name (for groups) or user email/username (for users). Use \"*\" to grant all users."},
+						"principal_type": schema.StringAttribute{Required: true, Description: "Principal type: \"group\" or \"user\"."},
+					},
+				},
 			},
 			"created_at": schema.StringAttribute{
 				Computed:      true,
@@ -137,12 +135,7 @@ func (r *knowledgeResource) Create(ctx context.Context, req resource.CreateReque
 		Description: plan.Description.ValueString(),
 	}
 
-	readNames := expandStringList(ctx, plan.ReadGroups, path.Root("read_groups"), &resp.Diagnostics)
-	writeNames := expandStringList(ctx, plan.WriteGroups, path.Root("write_groups"), &resp.Diagnostics)
-	readIDs := resolveGroupNamesToIDs(ctx, r.client, readNames, path.Root("read_groups"), &resp.Diagnostics)
-	writeIDs := resolveGroupNamesToIDs(ctx, r.client, writeNames, path.Root("write_groups"), &resp.Diagnostics)
-
-	form.AccessControl = buildAccessControl(readIDs, writeIDs)
+	form.AccessGrants = expandAccessGrants(ctx, r.client, plan.AccessGrants, path.Root("access_grants"), &resp.Diagnostics)
 	form.Data = decodeOptionalJSON(plan.DataJSON, path.Root("data_json"), &resp.Diagnostics)
 	form.Meta = decodeOptionalJSON(plan.MetaJSON, path.Root("meta_json"), &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -222,12 +215,7 @@ func (r *knowledgeResource) Update(ctx context.Context, req resource.UpdateReque
 		Description: plan.Description.ValueString(),
 	}
 
-	readNames := expandStringList(ctx, plan.ReadGroups, path.Root("read_groups"), &resp.Diagnostics)
-	writeNames := expandStringList(ctx, plan.WriteGroups, path.Root("write_groups"), &resp.Diagnostics)
-	readIDs := resolveGroupNamesToIDs(ctx, r.client, readNames, path.Root("read_groups"), &resp.Diagnostics)
-	writeIDs := resolveGroupNamesToIDs(ctx, r.client, writeNames, path.Root("write_groups"), &resp.Diagnostics)
-
-	form.AccessControl = buildAccessControl(readIDs, writeIDs)
+	form.AccessGrants = expandAccessGrants(ctx, r.client, plan.AccessGrants, path.Root("access_grants"), &resp.Diagnostics)
 	form.Data = decodeOptionalJSON(plan.DataJSON, path.Root("data_json"), &resp.Diagnostics)
 	form.Meta = decodeOptionalJSON(plan.MetaJSON, path.Root("meta_json"), &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -298,31 +286,8 @@ func knowledgeResponseToModel(ctx context.Context, apiClient *client.Client, res
 		diags.AddError("Serialize metadata", err.Error())
 	}
 
-	readIDs := extractGroupIDsFromAccessControl(resp.AccessControl, "read")
-	writeIDs := extractGroupIDsFromAccessControl(resp.AccessControl, "write")
-
-	readNames, readDiags := fetchGroupNamesForIDs(ctx, apiClient, readIDs)
-	diags.Append(readDiags...)
-	writeNames, writeDiags := fetchGroupNamesForIDs(ctx, apiClient, writeIDs)
-	diags.Append(writeDiags...)
-
-	readList := types.ListNull(types.StringType)
-	if len(readNames) > 0 {
-		l, listDiags := types.ListValueFrom(ctx, types.StringType, readNames)
-		diags.Append(listDiags...)
-		if !listDiags.HasError() {
-			readList = l
-		}
-	}
-
-	writeList := types.ListNull(types.StringType)
-	if len(writeNames) > 0 {
-		l, listDiags := types.ListValueFrom(ctx, types.StringType, writeNames)
-		diags.Append(listDiags...)
-		if !listDiags.HasError() {
-			writeList = l
-		}
-	}
+	grantsList, grantDiags := flattenAccessGrants(ctx, apiClient, resp.AccessGrants)
+	diags.Append(grantDiags...)
 
 	model := knowledgeResourceModel{
 		ID:          types.StringValue(resp.ID),
@@ -330,8 +295,7 @@ func knowledgeResponseToModel(ctx context.Context, apiClient *client.Client, res
 		Description: types.StringValue(resp.Description),
 		DataJSON:    data,
 		MetaJSON:    meta,
-		ReadGroups:  readList,
-		WriteGroups: writeList,
+		AccessGrants: grantsList,
 		CreatedAt:   formatDateValue(resp.CreatedAt),
 		UpdatedAt:   formatDateValue(resp.UpdatedAt),
 		UserID:      types.StringValue(resp.UserID),

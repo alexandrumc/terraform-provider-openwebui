@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"encoding/json"
 )
 
 // ModelForm represents the payload for creating or updating models.
@@ -14,7 +16,7 @@ type ModelForm struct {
 	Params        map[string]any `json:"params"`
 	BaseModelID   *string        `json:"base_model_id,omitempty"`
 	IsActive      *bool          `json:"is_active,omitempty"`
-	AccessControl map[string]any `json:"access_control,omitempty"`
+	AccessGrants  []AccessGrant  `json:"access_grants"`
 }
 
 // ModelResponse captures details returned by the model endpoints.
@@ -26,7 +28,7 @@ type ModelResponse struct {
 	Params        map[string]any `json:"params"`
 	BaseModelID   *string        `json:"base_model_id,omitempty"`
 	IsActive      bool           `json:"is_active"`
-	AccessControl map[string]any `json:"access_control,omitempty"`
+	AccessGrants  []AccessGrant  `json:"access_grants"`
 	CreatedAt     int64          `json:"created_at"`
 	UpdatedAt     int64          `json:"updated_at"`
 }
@@ -55,6 +57,12 @@ func (c *Client) GetModel(ctx context.Context, id string) (*ModelResponse, error
 // UpdateModel updates a model by identifier.
 func (c *Client) UpdateModel(ctx context.Context, id string, form ModelForm) (*ModelResponse, error) {
 	var resp ModelResponse
+	data, err0 := json.Marshal(form)
+	if err0 != nil {
+		tflog.Info(ctx, "Got error while serializing json")
+	} else {
+		tflog.Info(ctx, "JSON of model: ", map[string]any{"model": string(data)})
+	}
 	query := url.Values{"id": []string{id}}
 	if err := c.do(ctx, http.MethodPost, "models/model/update", query, form, &resp); err != nil {
 		return nil, err

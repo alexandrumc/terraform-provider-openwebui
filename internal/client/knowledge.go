@@ -11,7 +11,7 @@ import (
 type KnowledgeForm struct {
 	Name          string         `json:"name"`
 	Description   string         `json:"description"`
-	AccessControl map[string]any `json:"access_control,omitempty"`
+	AccessGrants  []AccessGrant  `json:"access_grants"`
 	Data          map[string]any `json:"data,omitempty"`
 	Meta          map[string]any `json:"meta,omitempty"`
 }
@@ -37,7 +37,7 @@ type KnowledgeResponse struct {
 	Description   string         `json:"description"`
 	CreatedAt     int64          `json:"created_at"`
 	UpdatedAt     int64          `json:"updated_at"`
-	AccessControl map[string]any `json:"access_control,omitempty"`
+	AccessGrants  []AccessGrant  `json:"access_grants"`
 	Data          map[string]any `json:"data,omitempty"`
 	Meta          map[string]any `json:"meta,omitempty"`
 	Files         []FileModel    `json:"files,omitempty"`
@@ -51,7 +51,7 @@ type KnowledgeFilesResponse struct {
 	Description   string         `json:"description"`
 	CreatedAt     int64          `json:"created_at"`
 	UpdatedAt     int64          `json:"updated_at"`
-	AccessControl map[string]any `json:"access_control,omitempty"`
+	AccessGrants  []AccessGrant  `json:"access_grants"`
 	Data          map[string]any `json:"data,omitempty"`
 	Meta          map[string]any `json:"meta,omitempty"`
 	Files         []FileModel    `json:"files"`
@@ -86,7 +86,7 @@ type KnowledgeListItem struct {
 	Description   string         `json:"description"`
 	CreatedAt     int64          `json:"created_at"`
 	UpdatedAt     int64          `json:"updated_at"`
-	AccessControl map[string]any `json:"access_control,omitempty"`
+	AccessGrants  []AccessGrant  `json:"access_grants"`
 	Data          map[string]any `json:"data,omitempty"`
 	Meta          map[string]any `json:"meta,omitempty"`
 }
