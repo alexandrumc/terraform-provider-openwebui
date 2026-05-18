@@ -81,7 +81,7 @@ func expandPermissions(ctx context.Context, perms *groupPermissionsModel, diags 
 	add("access_grants", perms.AccessGrants, path.Root("permissions").AtName("access_grants"))
 	add("chat", perms.Chat, path.Root("permissions").AtName("chat"))
 	add("features", perms.Features, path.Root("permissions").AtName("features"))
-	add("settings", perms.Features, path.Root("permissions").AtName("settings"))
+	add("settings", perms.Settings, path.Root("permissions").AtName("settings"))
 
 	if len(result) == 0 {
 		return nil
