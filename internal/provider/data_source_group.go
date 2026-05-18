@@ -76,11 +76,19 @@ func (d *groupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 						ElementType: types.BoolType,
 						Computed:    true,
 					},
+					"access_grants": schema.MapAttribute{
+						ElementType: types.BoolType,
+						Computed:    true,
+					},
 					"chat": schema.MapAttribute{
 						ElementType: types.BoolType,
 						Computed:    true,
 					},
 					"features": schema.MapAttribute{
+						ElementType: types.BoolType,
+						Computed:    true,
+					},
+					"settings": schema.MapAttribute{
 						ElementType: types.BoolType,
 						Computed:    true,
 					},

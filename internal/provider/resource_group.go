@@ -36,7 +36,7 @@ type groupResourceModel struct {
 	Name        types.String          `tfsdk:"name"`
 	Description types.String          `tfsdk:"description"`
 	Users       types.List            `tfsdk:"users"`
-	Permissions groupPermissionsModel `tfsdk:"permissions"`
+	Permissions *groupPermissionsModel `tfsdk:"permissions"`
 	UserID      types.String          `tfsdk:"user_id"`
 	CreatedAt   types.String          `tfsdk:"created_at"`
 	UpdatedAt   types.String          `tfsdk:"updated_at"`
@@ -45,8 +45,10 @@ type groupResourceModel struct {
 type groupPermissionsModel struct {
 	Workspace types.Map `tfsdk:"workspace"`
 	Sharing   types.Map `tfsdk:"sharing"`
+	AccessGrants types.Map `tfsdk:"access_grants"`
 	Chat      types.Map `tfsdk:"chat"`
 	Features  types.Map `tfsdk:"features"`
+	Settings types.Map `tfsdk:"settings"`
 }
 
 // NewGroupResource constructs a new resource instance.
@@ -106,6 +108,16 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 							mapvalidator.KeysAre(stringvalidator.OneOf(groupPermissionsSharingKeys...)),
 						},
 					},
+					"access_grants": schema.MapAttribute{
+						Optional:      true,
+						Computed:      true,
+						ElementType:   types.BoolType,
+						Description:   "Access grants permissions.",
+						PlanModifiers: []planmodifier.Map{mapplanmodifier.UseStateForUnknown()},
+						Validators: []validator.Map{
+							mapvalidator.KeysAre(stringvalidator.OneOf(groupPermissionsAccessGrantsKeys...)),
+						},
+					},
 					"chat": schema.MapAttribute{
 						Optional:      true,
 						Computed:      true,
@@ -124,6 +136,16 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 						PlanModifiers: []planmodifier.Map{mapplanmodifier.UseStateForUnknown()},
 						Validators: []validator.Map{
 							mapvalidator.KeysAre(stringvalidator.OneOf(groupPermissionsFeaturesKeys...)),
+						},
+					},
+					"settings": schema.MapAttribute{
+						Optional:      true,
+						Computed:      true,
+						ElementType:   types.BoolType,
+						Description:   "Settings permissions.",
+						PlanModifiers: []planmodifier.Map{mapplanmodifier.UseStateForUnknown()},
+						Validators: []validator.Map{
+							mapvalidator.KeysAre(stringvalidator.OneOf(groupPermissionsSettingsKeys...)),
 						},
 					},
 				},
