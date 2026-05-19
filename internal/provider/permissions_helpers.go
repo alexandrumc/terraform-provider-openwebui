@@ -15,7 +15,7 @@ var (
 	groupPermissionsSharingKeys   = []string{"models", "knowledge", "prompts", "tools", "skills", "notes", "public_models", "public_knowledge", "public_prompts", "public_tools", "public_skills", "public_notes", "public_chats"}
 	groupPermissionsAccessGrantsKeys = []string{"allow_users"}
 	groupPermissionsChatKeys      = []string{"controls", "valves", "system_prompt", "params", "file_upload", "web_upload", "delete", "delete_message", "continue_response", "regenerate_response", "rate_response", "edit", "share", "export", "stt", "tts", "call", "multiple_models", "temporary", "temporary_enforced"}
-	groupPermissionsFeaturesKeys  = []string{"api_keys", "notes", "channels", "folders", "direct_tool_servers", "web_search", "image_generation", "code_interpreter", "memories", "automations"}
+	groupPermissionsFeaturesKeys  = []string{"api_keys", "notes", "channels", "folders", "direct_tool_servers", "web_search", "image_generation", "code_interpreter", "memories", "automations", "calendar"}
 	groupPermissionsSettingsKeys  = []string{"interface"}
 
 	groupPermissionsAllowedSets = map[string]map[string]struct{}{

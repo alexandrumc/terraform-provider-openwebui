@@ -30,11 +30,10 @@ type GroupResponse struct {
 	Description string         `json:"description"`
 	CreatedAt   int64          `json:"created_at"`
 	UpdatedAt   int64          `json:"updated_at"`
-	UserIDs     []string       `json:"user_ids"`
-	AdminIDs    []string       `json:"admin_ids,omitempty"`
 	Permissions map[string]any `json:"permissions,omitempty"`
 	Meta        map[string]any `json:"meta,omitempty"`
 	Data        map[string]any `json:"data,omitempty"`
+	MemberCount int64          `json:"member_count"`
 }
 
 // CreateGroup provisions a new group.
@@ -66,6 +65,17 @@ func (c *Client) GetGroup(ctx context.Context, id string) (*GroupResponse, error
 	}
 
 	return &resp, nil
+}
+
+// GetGroupUsers retrieves a list of group users. For some reason, it's a POST instead of a GET
+func (c *Client) GetGroupUsers(ctx context.Context, id string) ([]User, error) {
+	var resp []User
+	path := fmt.Sprintf("groups/id/%s/users", url.PathEscape(id))
+	if err := c.do(ctx, http.MethodPost, path, nil, nil, &resp); err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 // UpdateGroup updates fields on an existing group.
