@@ -36,7 +36,7 @@ type groupResourceModel struct {
 	Name        types.String          `tfsdk:"name"`
 	Description types.String          `tfsdk:"description"`
 	Users       types.List            `tfsdk:"users"`
-	Permissions groupPermissionsModel `tfsdk:"permissions"`
+	Permissions *groupPermissionsModel `tfsdk:"permissions"`
 	UserID      types.String          `tfsdk:"user_id"`
 	CreatedAt   types.String          `tfsdk:"created_at"`
 	UpdatedAt   types.String          `tfsdk:"updated_at"`
@@ -45,8 +45,10 @@ type groupResourceModel struct {
 type groupPermissionsModel struct {
 	Workspace types.Map `tfsdk:"workspace"`
 	Sharing   types.Map `tfsdk:"sharing"`
+	AccessGrants types.Map `tfsdk:"access_grants"`
 	Chat      types.Map `tfsdk:"chat"`
 	Features  types.Map `tfsdk:"features"`
+	Settings types.Map `tfsdk:"settings"`
 }
 
 // NewGroupResource constructs a new resource instance.
@@ -106,6 +108,16 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 							mapvalidator.KeysAre(stringvalidator.OneOf(groupPermissionsSharingKeys...)),
 						},
 					},
+					"access_grants": schema.MapAttribute{
+						Optional:      true,
+						Computed:      true,
+						ElementType:   types.BoolType,
+						Description:   "Access grants permissions.",
+						PlanModifiers: []planmodifier.Map{mapplanmodifier.UseStateForUnknown()},
+						Validators: []validator.Map{
+							mapvalidator.KeysAre(stringvalidator.OneOf(groupPermissionsAccessGrantsKeys...)),
+						},
+					},
 					"chat": schema.MapAttribute{
 						Optional:      true,
 						Computed:      true,
@@ -124,6 +136,16 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 						PlanModifiers: []planmodifier.Map{mapplanmodifier.UseStateForUnknown()},
 						Validators: []validator.Map{
 							mapvalidator.KeysAre(stringvalidator.OneOf(groupPermissionsFeaturesKeys...)),
+						},
+					},
+					"settings": schema.MapAttribute{
+						Optional:      true,
+						Computed:      true,
+						ElementType:   types.BoolType,
+						Description:   "Settings permissions.",
+						PlanModifiers: []planmodifier.Map{mapplanmodifier.UseStateForUnknown()},
+						Validators: []validator.Map{
+							mapvalidator.KeysAre(stringvalidator.OneOf(groupPermissionsSettingsKeys...)),
 						},
 					},
 				},
@@ -279,9 +301,9 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
-	current, err := r.client.GetGroup(ctx, plan.ID.ValueString())
+	currentUsers, err := r.client.GetGroupUsers(ctx, plan.ID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Read group failed", err.Error())
+		resp.Diagnostics.AddError("Read group users failed", err.Error())
 		return
 	}
 
@@ -300,7 +322,9 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
-	toAdd, toRemove := diffStringSets(current.UserIDs, desiredIDs)
+	currentUserIDs := extractUserIDs(currentUsers)
+
+	toAdd, toRemove := diffStringSets(currentUserIDs, desiredIDs)
 
 	if err := r.client.RemoveGroupUsers(ctx, plan.ID.ValueString(), toRemove); err != nil {
 		resp.Diagnostics.AddError("Remove group members failed", err.Error())
@@ -367,8 +391,14 @@ func groupResponseToModel(ctx context.Context, apiClient *client.Client, resp *c
 	permissions, permDiags := flattenPermissions(ctx, resp.Permissions)
 	diags.Append(permDiags...)
 
-	usernames, nameDiags := fetchUsernamesForIDs(ctx, apiClient, resp.UserIDs)
-	diags.Append(nameDiags...)
+	// user ids come in via a separate call
+	users, err := apiClient.GetGroupUsers(ctx, resp.ID)
+	if err != nil {
+		diags.AddError("Read group users failed", err.Error())
+	}
+
+	// extract only the correct labels for storage
+	usernames := extractUserLabels(users);
 
 	usersList, usersDiags := types.ListValueFrom(ctx, types.StringType, usernames)
 	diags.Append(usersDiags...)
@@ -449,25 +479,9 @@ func lookupUserID(ctx context.Context, apiClient *client.Client, identifier stri
 	return users[0].ID, nil
 }
 
-func fetchUsernamesForIDs(ctx context.Context, apiClient *client.Client, ids []string) ([]string, diag.Diagnostics) {
-	var (
-		names []string
-		diags diag.Diagnostics
-	)
-
-	for _, id := range ids {
-		user, err := apiClient.GetUser(ctx, id)
-		if err != nil {
-			if err == client.ErrNotFound {
-				continue
-			}
-			diags.AddError(
-				"Fetch user failed",
-				fmt.Sprintf("Failed to retrieve user %s: %v", id, err),
-			)
-			continue
-		}
-
+func extractUserLabels(users []client.User) []string {
+	var names []string
+	for _, user := range users {
 		label := user.Email
 		if label == "" {
 			if user.Username != nil && *user.Username != "" {
@@ -478,14 +492,22 @@ func fetchUsernamesForIDs(ctx context.Context, apiClient *client.Client, ids []s
 		}
 
 		if label == "" {
-			label = id
+			label = user.ID
 		}
 
 		names = append(names, label)
 	}
 
 	sort.Strings(names)
-	return names, diags
+	return names
+}
+
+func extractUserIDs(users []client.User) []string {
+	var ids []string
+	for _, user := range users {
+		ids = append(ids, user.ID)
+	}
+	return ids
 }
 
 func uniqueStrings(values []string) []string {
