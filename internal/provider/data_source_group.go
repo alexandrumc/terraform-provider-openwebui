@@ -21,10 +21,10 @@ type groupDataSource struct {
 	client *client.Client
 }
 
-// groupDataSourceModel embeds the resource representation and adds the lookup identifier.
+// groupDataSourceModel embeds the base group fields and adds the lookup identifier.
 type groupDataSourceModel struct {
 	GroupID types.String `tfsdk:"group_id"`
-	groupResourceModel
+	groupBaseModel
 }
 
 // NewGroupDataSource constructs a new group data source.
@@ -209,15 +209,15 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	model, diags := groupResponseToModel(ctx, d.client, current)
+	base, diags := groupResponseToModel(ctx, d.client, current, true)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	state := groupDataSourceModel{
-		GroupID:            types.StringValue(current.ID),
-		groupResourceModel: model,
+		GroupID:        types.StringValue(current.ID),
+		groupBaseModel: base,
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
