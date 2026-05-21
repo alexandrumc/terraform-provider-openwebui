@@ -37,3 +37,22 @@ func flattenStringSlice(ctx context.Context, values []string) (types.List, diag.
 	list, diags := types.ListValueFrom(ctx, types.StringType, values)
 	return list, diags
 }
+
+// expandStringSet converts a Terraform set attribute into a Go slice of strings.
+func expandStringSet(ctx context.Context, value types.Set, attribute path.Path, diags *diag.Diagnostics) []string {
+	if value.IsNull() || value.IsUnknown() {
+		return nil
+	}
+
+	var result []string
+	if err := value.ElementsAs(ctx, &result, false); err != nil {
+		diags.AddAttributeError(
+			attribute,
+			"Invalid string set value",
+			fmt.Sprintf("Unable to decode attribute %s into a set of strings: %v", attribute.String(), err),
+		)
+		return nil
+	}
+
+	return result
+}

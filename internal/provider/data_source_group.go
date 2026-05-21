@@ -59,7 +59,7 @@ func (d *groupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				Computed:    true,
 				Description: "Group description.",
 			},
-			"users": schema.ListAttribute{
+			"users": schema.SetAttribute{
 				ElementType: types.StringType,
 				Computed:    true,
 				Description: "User identifiers (or usernames/emails) that belong to the group.",

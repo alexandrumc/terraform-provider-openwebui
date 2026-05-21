@@ -24,6 +24,7 @@ import (
 var _ resource.Resource = &groupResource{}
 var _ resource.ResourceWithConfigure = &groupResource{}
 var _ resource.ResourceWithImportState = &groupResource{}
+var _ resource.ResourceWithValidateConfig = &groupResource{}
 
 // groupResource manages Open WebUI groups.
 type groupResource struct {
@@ -35,7 +36,7 @@ type groupBaseModel struct {
 	ID          types.String           `tfsdk:"id"`
 	Name        types.String           `tfsdk:"name"`
 	Description types.String           `tfsdk:"description"`
-	Users       types.List             `tfsdk:"users"`
+	Users       types.Set              `tfsdk:"users"`
 	Permissions *groupPermissionsModel `tfsdk:"permissions"`
 	UserID      types.String           `tfsdk:"user_id"`
 	CreatedAt   types.String           `tfsdk:"created_at"`
@@ -84,7 +85,7 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Required:    true,
 				Description: "Group description.",
 			},
-			"users": schema.ListAttribute{
+			"users": schema.SetAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
 				Description: "Usernames or email addresses resolved to user IDs when managing group membership. Must not be set when manage_users is false.",
@@ -188,6 +189,23 @@ func (r *groupResource) Configure(_ context.Context, req resource.ConfigureReque
 	}
 }
 
+// ValidateConfig enforces cross-attribute constraints at plan time.
+func (r *groupResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config groupResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !config.ManageUsers.IsNull() && !config.ManageUsers.ValueBool() && !config.Users.IsNull() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("users"),
+			"Conflicting configuration",
+			"users cannot be set when manage_users is false.",
+		)
+	}
+}
+
 // Create provisions a group.
 func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	if r.client == nil {
@@ -202,10 +220,6 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 
 	managingUsers := plan.ManageUsers.IsNull() || plan.ManageUsers.ValueBool()
-	if !managingUsers && !plan.Users.IsNull() {
-		resp.Diagnostics.AddError("Conflicting configuration", "users cannot be set when manage_users is false.")
-		return
-	}
 
 	form := client.GroupForm{
 		Name:        plan.Name.ValueString(),
@@ -228,7 +242,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	providedData := false
 
 	if managingUsers && !plan.Users.IsNull() && !plan.Users.IsUnknown() {
-		usernames := expandStringList(ctx, plan.Users, path.Root("users"), &resp.Diagnostics)
+		usernames := expandStringSet(ctx, plan.Users, path.Root("users"), &resp.Diagnostics)
 		resolvedUserIDs := uniqueStrings(resolveUsernamesToIDs(ctx, r.client, usernames, path.Root("users"), &resp.Diagnostics))
 		if resp.Diagnostics.HasError() {
 			return
@@ -316,10 +330,6 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	}
 
 	managingUsers := plan.ManageUsers.IsNull() || plan.ManageUsers.ValueBool()
-	if !managingUsers && !plan.Users.IsNull() {
-		resp.Diagnostics.AddError("Conflicting configuration", "users cannot be set when manage_users is false.")
-		return
-	}
 
 	form := client.GroupUpdateForm{
 		Name:        plan.Name.ValueString(),
@@ -336,7 +346,7 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 			return
 		}
 
-		usernames := expandStringList(ctx, plan.Users, path.Root("users"), &resp.Diagnostics)
+		usernames := expandStringSet(ctx, plan.Users, path.Root("users"), &resp.Diagnostics)
 		desiredIDs := uniqueStrings(resolveUsernamesToIDs(ctx, r.client, usernames, path.Root("users"), &resp.Diagnostics))
 
 		if resp.Diagnostics.HasError() {
@@ -417,7 +427,7 @@ func groupResponseToModel(ctx context.Context, apiClient *client.Client, resp *c
 	permissions, permDiags := flattenPermissions(ctx, resp.Permissions)
 	diags.Append(permDiags...)
 
-	var usersList types.List
+	var usersSet types.Set
 	if fetchUsers {
 		users, err := apiClient.GetGroupUsers(ctx, resp.ID)
 		if err != nil {
@@ -425,17 +435,17 @@ func groupResponseToModel(ctx context.Context, apiClient *client.Client, resp *c
 		}
 		usernames := extractUserLabels(users)
 		var usersDiags diag.Diagnostics
-		usersList, usersDiags = types.ListValueFrom(ctx, types.StringType, usernames)
+		usersSet, usersDiags = types.SetValueFrom(ctx, types.StringType, usernames)
 		diags.Append(usersDiags...)
 	} else {
-		usersList = types.ListNull(types.StringType)
+		usersSet = types.SetNull(types.StringType)
 	}
 
 	model := groupBaseModel{
 		ID:          types.StringValue(resp.ID),
 		Name:        types.StringValue(resp.Name),
 		Description: types.StringValue(resp.Description),
-		Users:       usersList,
+		Users:       usersSet,
 		Permissions: permissions,
 		UserID:      types.StringValue(resp.UserID),
 		CreatedAt:   formatDateValue(resp.CreatedAt),
