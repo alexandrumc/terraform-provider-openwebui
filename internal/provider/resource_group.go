@@ -24,22 +24,29 @@ import (
 var _ resource.Resource = &groupResource{}
 var _ resource.ResourceWithConfigure = &groupResource{}
 var _ resource.ResourceWithImportState = &groupResource{}
+var _ resource.ResourceWithValidateConfig = &groupResource{}
 
 // groupResource manages Open WebUI groups.
 type groupResource struct {
 	client *client.Client
 }
 
-// groupResourceModel maps Terraform state.
-type groupResourceModel struct {
-	ID          types.String          `tfsdk:"id"`
-	Name        types.String          `tfsdk:"name"`
-	Description types.String          `tfsdk:"description"`
-	Users       types.List            `tfsdk:"users"`
+// groupBaseModel holds the fields common to both the resource and the data source.
+type groupBaseModel struct {
+	ID          types.String           `tfsdk:"id"`
+	Name        types.String           `tfsdk:"name"`
+	Description types.String           `tfsdk:"description"`
+	Users       types.Set              `tfsdk:"users"`
 	Permissions *groupPermissionsModel `tfsdk:"permissions"`
-	UserID      types.String          `tfsdk:"user_id"`
-	CreatedAt   types.String          `tfsdk:"created_at"`
-	UpdatedAt   types.String          `tfsdk:"updated_at"`
+	UserID      types.String           `tfsdk:"user_id"`
+	CreatedAt   types.String           `tfsdk:"created_at"`
+	UpdatedAt   types.String           `tfsdk:"updated_at"`
+}
+
+// groupResourceModel maps Terraform resource state.
+type groupResourceModel struct {
+	groupBaseModel
+	ManageUsers types.Bool `tfsdk:"manage_users"`
 }
 
 type groupPermissionsModel struct {
@@ -78,10 +85,14 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Required:    true,
 				Description: "Group description.",
 			},
-			"users": schema.ListAttribute{
+			"users": schema.SetAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
-				Description: "Usernames or email addresses resolved to user IDs when managing group membership.",
+				Description: "Usernames or email addresses resolved to user IDs when managing group membership. Must not be set when manage_users is false.",
+			},
+			"manage_users": schema.BoolAttribute{
+				Optional:    true,
+				Description: "When false, group membership is managed externally. The provider will not add or remove users, and external membership changes will not cause plan differences. If missing, treated as true.",
 			},
 			"permissions": schema.SingleNestedAttribute{
 				Optional:    true,
@@ -178,6 +189,23 @@ func (r *groupResource) Configure(_ context.Context, req resource.ConfigureReque
 	}
 }
 
+// ValidateConfig enforces cross-attribute constraints at plan time.
+func (r *groupResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config groupResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !config.ManageUsers.IsNull() && !config.ManageUsers.ValueBool() && !config.Users.IsNull() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("users"),
+			"Conflicting configuration",
+			"users cannot be set when manage_users is false.",
+		)
+	}
+}
+
 // Create provisions a group.
 func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	if r.client == nil {
@@ -190,6 +218,8 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	managingUsers := plan.ManageUsers.IsNull() || plan.ManageUsers.ValueBool()
 
 	form := client.GroupForm{
 		Name:        plan.Name.ValueString(),
@@ -207,19 +237,16 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 		Description: plan.Description.ValueString(),
 	}
 
-	providedUsers := !plan.Users.IsNull() && !plan.Users.IsUnknown()
 	providedPermissions := permissionsSpecified(plan.Permissions)
 	providedMeta := false
 	providedData := false
 
-	usernames := expandStringList(ctx, plan.Users, path.Root("users"), &resp.Diagnostics)
-	resolvedUserIDs := uniqueStrings(resolveUsernamesToIDs(ctx, r.client, usernames, path.Root("users"), &resp.Diagnostics))
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if providedUsers {
+	if managingUsers && !plan.Users.IsNull() && !plan.Users.IsUnknown() {
+		usernames := expandStringSet(ctx, plan.Users, path.Root("users"), &resp.Diagnostics)
+		resolvedUserIDs := uniqueStrings(resolveUsernamesToIDs(ctx, r.client, usernames, path.Root("users"), &resp.Diagnostics))
+		if resp.Diagnostics.HasError() {
+			return
+		}
 		if err := r.client.AddGroupUsers(ctx, created.ID, resolvedUserIDs); err != nil {
 			resp.Diagnostics.AddError("Add group members failed", err.Error())
 			return
@@ -247,13 +274,13 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
-	state, diags := groupResponseToModel(ctx, r.client, current)
+	base, diags := groupResponseToModel(ctx, r.client, current, managingUsers)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &groupResourceModel{groupBaseModel: base, ManageUsers: plan.ManageUsers})...)
 }
 
 // Read refreshes state from the API.
@@ -279,13 +306,14 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		return
 	}
 
-	updated, diags := groupResponseToModel(ctx, r.client, current)
+	fetchUsers := state.ManageUsers.IsNull() || state.ManageUsers.ValueBool()
+	base, diags := groupResponseToModel(ctx, r.client, current, fetchUsers)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &updated)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &groupResourceModel{groupBaseModel: base, ManageUsers: state.ManageUsers})...)
 }
 
 // Update mutates group properties.
@@ -301,38 +329,44 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
-	currentUsers, err := r.client.GetGroupUsers(ctx, plan.ID.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Read group users failed", err.Error())
-		return
-	}
+	managingUsers := plan.ManageUsers.IsNull() || plan.ManageUsers.ValueBool()
 
 	form := client.GroupUpdateForm{
 		Name:        plan.Name.ValueString(),
 		Description: plan.Description.ValueString(),
 	}
-
-	usernames := expandStringList(ctx, plan.Users, path.Root("users"), &resp.Diagnostics)
-	desiredIDs := uniqueStrings(resolveUsernamesToIDs(ctx, r.client, usernames, path.Root("users"), &resp.Diagnostics))
 	form.Permissions = expandPermissions(ctx, plan.Permissions, &resp.Diagnostics)
 	form.Meta = nil
 	form.Data = nil
 
+	if managingUsers {
+		currentUsers, err := r.client.GetGroupUsers(ctx, plan.ID.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Read group users failed", err.Error())
+			return
+		}
+
+		usernames := expandStringSet(ctx, plan.Users, path.Root("users"), &resp.Diagnostics)
+		desiredIDs := uniqueStrings(resolveUsernamesToIDs(ctx, r.client, usernames, path.Root("users"), &resp.Diagnostics))
+
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		toAdd, toRemove := diffStringSets(extractUserIDs(currentUsers), desiredIDs)
+
+		if err := r.client.RemoveGroupUsers(ctx, plan.ID.ValueString(), toRemove); err != nil {
+			resp.Diagnostics.AddError("Remove group members failed", err.Error())
+			return
+		}
+
+		if err := r.client.AddGroupUsers(ctx, plan.ID.ValueString(), toAdd); err != nil {
+			resp.Diagnostics.AddError("Add group members failed", err.Error())
+			return
+		}
+	}
+
 	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	currentUserIDs := extractUserIDs(currentUsers)
-
-	toAdd, toRemove := diffStringSets(currentUserIDs, desiredIDs)
-
-	if err := r.client.RemoveGroupUsers(ctx, plan.ID.ValueString(), toRemove); err != nil {
-		resp.Diagnostics.AddError("Remove group members failed", err.Error())
-		return
-	}
-
-	if err := r.client.AddGroupUsers(ctx, plan.ID.ValueString(), toAdd); err != nil {
-		resp.Diagnostics.AddError("Add group members failed", err.Error())
 		return
 	}
 
@@ -347,13 +381,13 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
-	state, diags := groupResponseToModel(ctx, r.client, fresh)
+	base, diags := groupResponseToModel(ctx, r.client, fresh, managingUsers)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &groupResourceModel{groupBaseModel: base, ManageUsers: plan.ManageUsers})...)
 }
 
 // Delete removes the group.
@@ -384,30 +418,34 @@ func (r *groupResource) ImportState(ctx context.Context, req resource.ImportStat
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-// groupResponseToModel converts API structures to Terraform state.
-func groupResponseToModel(ctx context.Context, apiClient *client.Client, resp *client.GroupResponse) (groupResourceModel, diag.Diagnostics) {
+// groupResponseToModel converts an API response to the base model shared by the resource and data source.
+// fetchUsers controls whether group membership is retrieved from the API; pass false when
+// membership is managed externally so no API call is made and users is left null.
+func groupResponseToModel(ctx context.Context, apiClient *client.Client, resp *client.GroupResponse, fetchUsers bool) (groupBaseModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	permissions, permDiags := flattenPermissions(ctx, resp.Permissions)
 	diags.Append(permDiags...)
 
-	// user ids come in via a separate call
-	users, err := apiClient.GetGroupUsers(ctx, resp.ID)
-	if err != nil {
-		diags.AddError("Read group users failed", err.Error())
+	var usersSet types.Set
+	if fetchUsers {
+		users, err := apiClient.GetGroupUsers(ctx, resp.ID)
+		if err != nil {
+			diags.AddError("Read group users failed", err.Error())
+		}
+		usernames := extractUserLabels(users)
+		var usersDiags diag.Diagnostics
+		usersSet, usersDiags = types.SetValueFrom(ctx, types.StringType, usernames)
+		diags.Append(usersDiags...)
+	} else {
+		usersSet = types.SetNull(types.StringType)
 	}
 
-	// extract only the correct labels for storage
-	usernames := extractUserLabels(users);
-
-	usersList, usersDiags := types.ListValueFrom(ctx, types.StringType, usernames)
-	diags.Append(usersDiags...)
-
-	model := groupResourceModel{
+	model := groupBaseModel{
 		ID:          types.StringValue(resp.ID),
 		Name:        types.StringValue(resp.Name),
 		Description: types.StringValue(resp.Description),
-		Users:       usersList,
+		Users:       usersSet,
 		Permissions: permissions,
 		UserID:      types.StringValue(resp.UserID),
 		CreatedAt:   formatDateValue(resp.CreatedAt),
