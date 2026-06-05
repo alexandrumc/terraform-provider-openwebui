@@ -34,15 +34,14 @@ type ToolResponse struct {
 
 // ToolModel includes full tool content and specifications.
 type ToolModel struct {
-	ID            string           `json:"id"`
-	UserID        string           `json:"user_id"`
-	Name          string           `json:"name"`
-	Content       string           `json:"content"`
-	Specs         []map[string]any `json:"specs"`
-	Meta          ToolMeta         `json:"meta"`
-	AccessGrants  []AccessGrant    `json:"access_grants"`
-	UpdatedAt     int64            `json:"updated_at"`
-	CreatedAt     int64            `json:"created_at"`
+	ID            string         `json:"id"`
+	UserID        string         `json:"user_id"`
+	Name          string         `json:"name"`
+	Content       string         `json:"content"`
+	Meta          ToolMeta       `json:"meta"`
+	AccessGrants  []AccessGrant  `json:"access_grants"`
+	UpdatedAt     int64          `json:"updated_at"`
+	CreatedAt     int64          `json:"created_at"`
 }
 
 // ToolAccessResponse captures tool details with access metadata.

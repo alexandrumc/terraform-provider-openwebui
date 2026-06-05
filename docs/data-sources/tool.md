@@ -40,7 +40,6 @@ data "openwebui_tool" "calculator" {
 * `description` – Tool description.
 * `manifest_json` – Tool manifest JSON.
 * `read_groups` / `write_groups` – Access control group names.
-* `specs_json` – Tool specification JSON.
 * `user_id` – Owner user ID.
 * `created_at` / `updated_at` – Timestamps.
 * `write_access` – Whether the current user has write access.

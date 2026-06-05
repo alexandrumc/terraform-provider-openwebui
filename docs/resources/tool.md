@@ -53,7 +53,6 @@ resource "openwebui_tool" "calculator" {
 ## Attribute Reference
 
 * `id` – Tool identifier (same as input).
-* `specs_json` – JSON specification returned by Open WebUI.
 * `user_id` – Identifier of the user who owns the tool.
 * `created_at` – Unix timestamp of tool creation.
 * `updated_at` – Unix timestamp of last update.

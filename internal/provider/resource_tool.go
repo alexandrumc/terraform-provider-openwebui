@@ -34,7 +34,6 @@ type toolResourceModel struct {
 	Description  types.String `tfsdk:"description"`
 	ManifestJSON types.String `tfsdk:"manifest_json"`
 	AccessGrants types.List   `tfsdk:"access_grants"`
-	SpecsJSON    types.String `tfsdk:"specs_json"`
 	UserID       types.String `tfsdk:"user_id"`
 	CreatedAt    types.Int64  `tfsdk:"created_at"`
 	UpdatedAt    types.Int64  `tfsdk:"updated_at"`
@@ -92,10 +91,6 @@ func (r *toolResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						"principal_type": schema.StringAttribute{Required: true, Description: "Principal type: \"group\" or \"user\"."},
 					},
 				},
-			},
-			"specs_json": schema.StringAttribute{
-				Computed:    true,
-				Description: "Raw JSON specification returned by Open WebUI.",
 			},
 			"user_id": schema.StringAttribute{
 				Computed:    true,
@@ -161,10 +156,10 @@ func (r *toolResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	content, specs, fetchDiags := fetchToolContent(ctx, r.client, created.ID)
+	content, fetchDiags := fetchToolContent(ctx, r.client, created.ID)
 	resp.Diagnostics.Append(fetchDiags...)
 
-	state, stateDiags := toolResponseToModel(ctx, r.client, access, content, specs, plan.Content)
+	state, stateDiags := toolResponseToModel(ctx, r.client, access, content, plan.Content)
 	resp.Diagnostics.Append(stateDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -196,10 +191,10 @@ func (r *toolResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	content, specs, fetchDiags := fetchToolContent(ctx, r.client, state.ID.ValueString())
+	content, fetchDiags := fetchToolContent(ctx, r.client, state.ID.ValueString())
 	resp.Diagnostics.Append(fetchDiags...)
 
-	updated, diags := toolResponseToModel(ctx, r.client, access, content, specs, state.Content)
+	updated, diags := toolResponseToModel(ctx, r.client, access, content, state.Content)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -243,7 +238,7 @@ func (r *toolResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		CreatedAt:     updated.CreatedAt,
 	}
 
-	state, stateDiags := toolResponseToModel(ctx, r.client, access, updated.Content, updated.Specs, plan.Content)
+	state, stateDiags := toolResponseToModel(ctx, r.client, access, updated.Content, plan.Content)
 	resp.Diagnostics.Append(stateDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -305,25 +300,25 @@ func toolFormFromPlan(ctx context.Context, apiClient *client.Client, plan toolRe
 	}, diags
 }
 
-func fetchToolContent(ctx context.Context, apiClient *client.Client, toolID string) (string, []map[string]any, diag.Diagnostics) {
+func fetchToolContent(ctx context.Context, apiClient *client.Client, toolID string) (string, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	tools, err := apiClient.ExportTools(ctx)
 	if err != nil {
 		diags.AddWarning("Export tools failed", err.Error())
-		return "", nil, diags
+		return "", diags
 	}
 
 	for _, tool := range tools {
 		if tool.ID == toolID {
-			return tool.Content, tool.Specs, diags
+			return tool.Content, diags
 		}
 	}
 
-	return "", nil, diags
+	return "", diags
 }
 
-func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *client.ToolAccessResponse, content string, specs []map[string]any, fallbackContent types.String) (toolResourceModel, diag.Diagnostics) {
+func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *client.ToolAccessResponse, content string, fallbackContent types.String) (toolResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if access == nil {
@@ -337,11 +332,6 @@ func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *
 	manifestJSON, err := encodeOptionalJSON(access.Meta.Manifest)
 	if err != nil {
 		diags.AddError("Serialize manifest", err.Error())
-	}
-
-	specsJSON, err := encodeOptionalJSONValue(specs)
-	if err != nil {
-		diags.AddError("Serialize specs", err.Error())
 	}
 
 	description := types.StringNull()
@@ -363,7 +353,6 @@ func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *
 		Description:  description,
 		ManifestJSON: manifestJSON,
 		AccessGrants: grantsList,
-		SpecsJSON:    specsJSON,
 		UserID:       types.StringValue(access.UserID),
 		CreatedAt:    types.Int64Value(access.CreatedAt),
 		UpdatedAt:    types.Int64Value(access.UpdatedAt),

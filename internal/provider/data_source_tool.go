@@ -27,7 +27,6 @@ type toolDataSourceModel struct {
 	Description  types.String `tfsdk:"description"`
 	ManifestJSON types.String `tfsdk:"manifest_json"`
 	AccessGrants types.List   `tfsdk:"access_grants"`
-	SpecsJSON    types.String `tfsdk:"specs_json"`
 	UserID       types.String `tfsdk:"user_id"`
 	CreatedAt    types.Int64  `tfsdk:"created_at"`
 	UpdatedAt    types.Int64  `tfsdk:"updated_at"`
@@ -78,10 +77,6 @@ func (d *toolDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 						"principal_type": schema.StringAttribute{Computed: true, Description: "Principal type: \"group\" or \"user\"."},
 					},
 				},
-			},
-			"specs_json": schema.StringAttribute{
-				Computed:    true,
-				Description: "Raw JSON specification returned by Open WebUI.",
 			},
 			"user_id": schema.StringAttribute{
 				Computed:    true,
@@ -150,10 +145,10 @@ func (d *toolDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
-	content, specs, fetchDiags := fetchToolContent(ctx, d.client, access.ID)
+	content, fetchDiags := fetchToolContent(ctx, d.client, access.ID)
 	resp.Diagnostics.Append(fetchDiags...)
 
-	state, diags := toolResponseToModel(ctx, d.client, access, content, specs, types.StringNull())
+	state, diags := toolResponseToModel(ctx, d.client, access, content, types.StringNull())
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
