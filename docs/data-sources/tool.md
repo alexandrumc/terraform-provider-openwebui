@@ -16,7 +16,7 @@ Fetches a tool definition by ID.
 
 ```hcl
 data "openwebui_tool" "calculator" {
-  tool_id = "calculator"
+  id = "calculator"
 }
 ```
 
@@ -24,17 +24,17 @@ data "openwebui_tool" "calculator" {
 
 ```hcl
 data "openwebui_tool" "calculator" {
-  tool_id = openwebui_tool.calculator.id
+  id = openwebui_tool.calculator.id
 }
 ```
 
 ## Argument Reference
 
-* `tool_id` (Required) – Identifier of the tool to retrieve.
+* `id` (Required) – Identifier of the tool to retrieve.
 
 ## Attribute Reference
 
-* `id` – Unique tool identifier.
+* `id` – Tool identifier.
 * `name` – Tool name.
 * `content` – Tool content.
 * `description` – Tool description.

@@ -21,7 +21,6 @@ type toolDataSource struct {
 
 // toolDataSourceModel maps data source inputs and outputs.
 type toolDataSourceModel struct {
-	ToolID       types.String `tfsdk:"tool_id"`
 	ID           types.String `tfsdk:"id"`
 	Name         types.String `tfsdk:"name"`
 	Content      types.String `tfsdk:"content"`
@@ -49,13 +48,9 @@ func (d *toolDataSource) Metadata(_ context.Context, req datasource.MetadataRequ
 func (d *toolDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"tool_id": schema.StringAttribute{
+			"id": schema.StringAttribute{
 				Required:    true,
 				Description: "Identifier of the tool to look up.",
-			},
-			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "Unique identifier assigned by Open WebUI.",
 			},
 			"name": schema.StringAttribute{
 				Computed:    true,
@@ -132,22 +127,22 @@ func (d *toolDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
-	if config.ToolID.IsUnknown() || config.ToolID.IsNull() || config.ToolID.ValueString() == "" {
+	if config.ID.IsUnknown() || config.ID.IsNull() || config.ID.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(
-			path.Root("tool_id"),
+			path.Root("id"),
 			"Missing tool identifier",
-			"The tool_id argument must be supplied to query an existing tool.",
+			"The id argument must be supplied to query an existing tool.",
 		)
 		return
 	}
 
-	access, err := d.client.GetTool(ctx, config.ToolID.ValueString())
+	access, err := d.client.GetTool(ctx, config.ID.ValueString())
 	if err != nil {
 		if err == client.ErrNotFound {
 			resp.Diagnostics.AddAttributeError(
-				path.Root("tool_id"),
+				path.Root("id"),
 				"Tool not found",
-				"No Open WebUI tool was found with the supplied tool_id.",
+				"No Open WebUI tool was found with the supplied id.",
 			)
 			return
 		}

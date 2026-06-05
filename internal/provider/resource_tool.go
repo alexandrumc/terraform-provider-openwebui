@@ -29,7 +29,6 @@ type toolResource struct {
 // toolResourceModel captures Terraform state for tools.
 type toolResourceModel struct {
 	ID           types.String `tfsdk:"id"`
-	ToolID       types.String `tfsdk:"tool_id"`
 	Name         types.String `tfsdk:"name"`
 	Content      types.String `tfsdk:"content"`
 	Description  types.String `tfsdk:"description"`
@@ -57,17 +56,9 @@ func (r *toolResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Computed:      true,
-				Description:   "Unique identifier assigned by Open WebUI.",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
-			"tool_id": schema.StringAttribute{
-				Required:    true,
-				Description: "Identifier used when creating the tool.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					stringplanmodifier.RequiresReplace(),
-				},
+				Required:      true,
+				Description:   "Identifier for the tool.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
@@ -179,7 +170,6 @@ func (r *toolResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	state.ToolID = types.StringValue(created.ID)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -288,7 +278,6 @@ func (r *toolResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 // ImportState maps an import identifier onto the id attribute.
 func (r *toolResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("tool_id"), req.ID)...)
 }
 
 func toolFormFromPlan(ctx context.Context, apiClient *client.Client, plan toolResourceModel) (client.ToolForm, diag.Diagnostics) {
@@ -308,7 +297,7 @@ func toolFormFromPlan(ctx context.Context, apiClient *client.Client, plan toolRe
 	}
 
 	return client.ToolForm{
-		ID:            plan.ToolID.ValueString(),
+		ID:            plan.ID.ValueString(),
 		Name:          plan.Name.ValueString(),
 		Content:       plan.Content.ValueString(),
 		Meta:          meta,
@@ -369,7 +358,6 @@ func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *
 
 	state := toolResourceModel{
 		ID:           types.StringValue(access.ID),
-		ToolID:       types.StringValue(access.ID),
 		Name:         types.StringValue(access.Name),
 		Content:      contentValue,
 		Description:  description,

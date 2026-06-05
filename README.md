@@ -206,7 +206,7 @@ resource "openwebui_group" "example" {
 
 ```hcl
 resource "openwebui_tool" "calculator" {
-  tool_id = "calculator"
+  id      = "calculator"
   name    = "Calculator"
   content = file("./tools/calculator.py")
 
