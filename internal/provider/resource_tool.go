@@ -32,7 +32,6 @@ type toolResourceModel struct {
 	Name         types.String `tfsdk:"name"`
 	Content      types.String `tfsdk:"content"`
 	Description  types.String `tfsdk:"description"`
-	ManifestJSON types.String `tfsdk:"manifest_json"`
 	AccessGrants types.List   `tfsdk:"access_grants"`
 	UserID       types.String `tfsdk:"user_id"`
 	CreatedAt    types.Int64  `tfsdk:"created_at"`
@@ -71,12 +70,6 @@ func (r *toolResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Optional:      true,
 				Computed:      true,
 				Description:   "Human-readable tool description.",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
-			"manifest_json": schema.StringAttribute{
-				Optional:      true,
-				Computed:      true,
-				Description:   "JSON manifest for the tool.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"access_grants": schema.ListNestedAttribute{
@@ -278,8 +271,6 @@ func (r *toolResource) ImportState(ctx context.Context, req resource.ImportState
 func toolFormFromPlan(ctx context.Context, apiClient *client.Client, plan toolResourceModel) (client.ToolForm, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	manifest := decodeOptionalJSON(plan.ManifestJSON, path.Root("manifest_json"), &diags)
-
 	var description *string
 	if !plan.Description.IsNull() && !plan.Description.IsUnknown() {
 		value := plan.Description.ValueString()
@@ -288,7 +279,6 @@ func toolFormFromPlan(ctx context.Context, apiClient *client.Client, plan toolRe
 
 	meta := client.ToolMeta{
 		Description: description,
-		Manifest:    manifest,
 	}
 
 	return client.ToolForm{
@@ -329,11 +319,6 @@ func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *
 	grantsList, grantDiags := flattenAccessGrants(ctx, apiClient, access.AccessGrants)
 	diags.Append(grantDiags...)
 
-	manifestJSON, err := encodeOptionalJSON(access.Meta.Manifest)
-	if err != nil {
-		diags.AddError("Serialize manifest", err.Error())
-	}
-
 	description := types.StringNull()
 	if access.Meta.Description != nil {
 		description = types.StringValue(*access.Meta.Description)
@@ -351,7 +336,6 @@ func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *
 		Name:         types.StringValue(access.Name),
 		Content:      contentValue,
 		Description:  description,
-		ManifestJSON: manifestJSON,
 		AccessGrants: grantsList,
 		UserID:       types.StringValue(access.UserID),
 		CreatedAt:    types.Int64Value(access.CreatedAt),

@@ -8,8 +8,7 @@ import (
 
 // ToolMeta captures descriptive metadata for a tool.
 type ToolMeta struct {
-	Description *string        `json:"description,omitempty"`
-	Manifest    map[string]any `json:"manifest,omitempty"`
+	Description *string `json:"description,omitempty"`
 }
 
 // ToolForm represents the payload for creating or updating tools.

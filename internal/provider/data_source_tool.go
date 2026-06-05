@@ -25,7 +25,6 @@ type toolDataSourceModel struct {
 	Name         types.String `tfsdk:"name"`
 	Content      types.String `tfsdk:"content"`
 	Description  types.String `tfsdk:"description"`
-	ManifestJSON types.String `tfsdk:"manifest_json"`
 	AccessGrants types.List   `tfsdk:"access_grants"`
 	UserID       types.String `tfsdk:"user_id"`
 	CreatedAt    types.Int64  `tfsdk:"created_at"`
@@ -62,10 +61,6 @@ func (d *toolDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 			"description": schema.StringAttribute{
 				Computed:    true,
 				Description: "Human-readable tool description.",
-			},
-			"manifest_json": schema.StringAttribute{
-				Computed:    true,
-				Description: "JSON manifest for the tool.",
 			},
 			"access_grants": schema.ListNestedAttribute{
 				Computed:    true,

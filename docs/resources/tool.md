@@ -30,11 +30,7 @@ resource "openwebui_tool" "calculator" {
   name    = "Calculator"
   content = file("./tools/calculator.py")
 
-  description   = "Internal calculator tool"
-  manifest_json = jsonencode({
-    version = "1.0.0"
-  })
-
+  description  = "Internal calculator tool"
   read_groups  = ["Support"]
   write_groups = ["Support"]
 }
@@ -46,7 +42,6 @@ resource "openwebui_tool" "calculator" {
 * `name` (Required) – Display name for the tool.
 * `content` (Required) – Tool source content.
 * `description` (Optional) – Human-readable description.
-* `manifest_json` (Optional) – JSON manifest for the tool.
 * `read_groups` (Optional) – Group names or IDs granted read access.
 * `write_groups` (Optional) – Group names or IDs granted write access.
 
