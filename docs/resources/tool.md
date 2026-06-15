@@ -16,7 +16,7 @@ Creates and manages tool definitions in Open WebUI.
 
 ```hcl
 resource "openwebui_tool" "calculator" {
-  tool_id = "calculator"
+  id      = "calculator"
   name    = "Calculator"
   content = file("./tools/calculator.py")
 }
@@ -26,15 +26,11 @@ resource "openwebui_tool" "calculator" {
 
 ```hcl
 resource "openwebui_tool" "calculator" {
-  tool_id = "calculator"
+  id      = "calculator"
   name    = "Calculator"
   content = file("./tools/calculator.py")
 
-  description   = "Internal calculator tool"
-  manifest_json = jsonencode({
-    version = "1.0.0"
-  })
-
+  description  = "Internal calculator tool"
   read_groups  = ["Support"]
   write_groups = ["Support"]
 }
@@ -42,18 +38,16 @@ resource "openwebui_tool" "calculator" {
 
 ## Argument Reference
 
-* `tool_id` (Required) – Identifier used when creating the tool.
+* `id` (Required) – Identifier for the tool.
 * `name` (Required) – Display name for the tool.
 * `content` (Required) – Tool source content.
 * `description` (Optional) – Human-readable description.
-* `manifest_json` (Optional) – JSON manifest for the tool.
 * `read_groups` (Optional) – Group names or IDs granted read access.
 * `write_groups` (Optional) – Group names or IDs granted write access.
 
 ## Attribute Reference
 
-* `id` – Unique tool identifier.
-* `specs_json` – JSON specification returned by Open WebUI.
+* `id` – Tool identifier (same as input).
 * `user_id` – Identifier of the user who owns the tool.
 * `created_at` – Unix timestamp of tool creation.
 * `updated_at` – Unix timestamp of last update.

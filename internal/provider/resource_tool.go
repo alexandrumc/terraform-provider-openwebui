@@ -29,13 +29,10 @@ type toolResource struct {
 // toolResourceModel captures Terraform state for tools.
 type toolResourceModel struct {
 	ID           types.String `tfsdk:"id"`
-	ToolID       types.String `tfsdk:"tool_id"`
 	Name         types.String `tfsdk:"name"`
 	Content      types.String `tfsdk:"content"`
 	Description  types.String `tfsdk:"description"`
-	ManifestJSON types.String `tfsdk:"manifest_json"`
 	AccessGrants types.List   `tfsdk:"access_grants"`
-	SpecsJSON    types.String `tfsdk:"specs_json"`
 	UserID       types.String `tfsdk:"user_id"`
 	CreatedAt    types.Int64  `tfsdk:"created_at"`
 	UpdatedAt    types.Int64  `tfsdk:"updated_at"`
@@ -57,17 +54,9 @@ func (r *toolResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Computed:      true,
-				Description:   "Unique identifier assigned by Open WebUI.",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
-			"tool_id": schema.StringAttribute{
-				Required:    true,
-				Description: "Identifier used when creating the tool.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					stringplanmodifier.RequiresReplace(),
-				},
+				Required:      true,
+				Description:   "Identifier for the tool.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
@@ -83,12 +72,6 @@ func (r *toolResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Description:   "Human-readable tool description.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"manifest_json": schema.StringAttribute{
-				Optional:      true,
-				Computed:      true,
-				Description:   "JSON manifest for the tool.",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
 			"access_grants": schema.ListNestedAttribute{
 				Optional:      true,
 				Computed:      true,
@@ -101,10 +84,6 @@ func (r *toolResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						"principal_type": schema.StringAttribute{Required: true, Description: "Principal type: \"group\" or \"user\"."},
 					},
 				},
-			},
-			"specs_json": schema.StringAttribute{
-				Computed:    true,
-				Description: "Raw JSON specification returned by Open WebUI.",
 			},
 			"user_id": schema.StringAttribute{
 				Computed:    true,
@@ -170,16 +149,15 @@ func (r *toolResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	content, specs, fetchDiags := fetchToolContent(ctx, r.client, created.ID)
+	content, fetchDiags := fetchToolContent(ctx, r.client, created.ID)
 	resp.Diagnostics.Append(fetchDiags...)
 
-	state, stateDiags := toolResponseToModel(ctx, r.client, access, content, specs, plan.Content)
+	state, stateDiags := toolResponseToModel(ctx, r.client, access, content, plan.Content)
 	resp.Diagnostics.Append(stateDiags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	state.ToolID = types.StringValue(created.ID)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -206,10 +184,10 @@ func (r *toolResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	content, specs, fetchDiags := fetchToolContent(ctx, r.client, state.ID.ValueString())
+	content, fetchDiags := fetchToolContent(ctx, r.client, state.ID.ValueString())
 	resp.Diagnostics.Append(fetchDiags...)
 
-	updated, diags := toolResponseToModel(ctx, r.client, access, content, specs, state.Content)
+	updated, diags := toolResponseToModel(ctx, r.client, access, content, state.Content)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -253,7 +231,7 @@ func (r *toolResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		CreatedAt:     updated.CreatedAt,
 	}
 
-	state, stateDiags := toolResponseToModel(ctx, r.client, access, updated.Content, updated.Specs, plan.Content)
+	state, stateDiags := toolResponseToModel(ctx, r.client, access, updated.Content, plan.Content)
 	resp.Diagnostics.Append(stateDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -288,13 +266,10 @@ func (r *toolResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 // ImportState maps an import identifier onto the id attribute.
 func (r *toolResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("tool_id"), req.ID)...)
 }
 
 func toolFormFromPlan(ctx context.Context, apiClient *client.Client, plan toolResourceModel) (client.ToolForm, diag.Diagnostics) {
 	var diags diag.Diagnostics
-
-	manifest := decodeOptionalJSON(plan.ManifestJSON, path.Root("manifest_json"), &diags)
 
 	var description *string
 	if !plan.Description.IsNull() && !plan.Description.IsUnknown() {
@@ -304,11 +279,10 @@ func toolFormFromPlan(ctx context.Context, apiClient *client.Client, plan toolRe
 
 	meta := client.ToolMeta{
 		Description: description,
-		Manifest:    manifest,
 	}
 
 	return client.ToolForm{
-		ID:            plan.ToolID.ValueString(),
+		ID:            plan.ID.ValueString(),
 		Name:          plan.Name.ValueString(),
 		Content:       plan.Content.ValueString(),
 		Meta:          meta,
@@ -316,25 +290,25 @@ func toolFormFromPlan(ctx context.Context, apiClient *client.Client, plan toolRe
 	}, diags
 }
 
-func fetchToolContent(ctx context.Context, apiClient *client.Client, toolID string) (string, []map[string]any, diag.Diagnostics) {
+func fetchToolContent(ctx context.Context, apiClient *client.Client, toolID string) (string, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	tools, err := apiClient.ExportTools(ctx)
 	if err != nil {
 		diags.AddWarning("Export tools failed", err.Error())
-		return "", nil, diags
+		return "", diags
 	}
 
 	for _, tool := range tools {
 		if tool.ID == toolID {
-			return tool.Content, tool.Specs, diags
+			return tool.Content, diags
 		}
 	}
 
-	return "", nil, diags
+	return "", diags
 }
 
-func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *client.ToolAccessResponse, content string, specs []map[string]any, fallbackContent types.String) (toolResourceModel, diag.Diagnostics) {
+func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *client.ToolAccessResponse, content string, fallbackContent types.String) (toolResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if access == nil {
@@ -344,16 +318,6 @@ func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *
 
 	grantsList, grantDiags := flattenAccessGrants(ctx, apiClient, access.AccessGrants)
 	diags.Append(grantDiags...)
-
-	manifestJSON, err := encodeOptionalJSON(access.Meta.Manifest)
-	if err != nil {
-		diags.AddError("Serialize manifest", err.Error())
-	}
-
-	specsJSON, err := encodeOptionalJSONValue(specs)
-	if err != nil {
-		diags.AddError("Serialize specs", err.Error())
-	}
 
 	description := types.StringNull()
 	if access.Meta.Description != nil {
@@ -369,13 +333,10 @@ func toolResponseToModel(ctx context.Context, apiClient *client.Client, access *
 
 	state := toolResourceModel{
 		ID:           types.StringValue(access.ID),
-		ToolID:       types.StringValue(access.ID),
 		Name:         types.StringValue(access.Name),
 		Content:      contentValue,
 		Description:  description,
-		ManifestJSON: manifestJSON,
 		AccessGrants: grantsList,
-		SpecsJSON:    specsJSON,
 		UserID:       types.StringValue(access.UserID),
 		CreatedAt:    types.Int64Value(access.CreatedAt),
 		UpdatedAt:    types.Int64Value(access.UpdatedAt),

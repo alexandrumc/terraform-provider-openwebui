@@ -206,14 +206,11 @@ resource "openwebui_group" "example" {
 
 ```hcl
 resource "openwebui_tool" "calculator" {
-  tool_id = "calculator"
+  id      = "calculator"
   name    = "Calculator"
   content = file("./tools/calculator.py")
 
-  description   = "Internal calculator tool"
-  manifest_json = jsonencode({
-    version = "1.0.0"
-  })
+  description = "Internal calculator tool"
 }
 
 resource "openwebui_tool_valves" "calculator" {
