@@ -33,6 +33,11 @@ type ModelResponse struct {
 	UpdatedAt     int64          `json:"updated_at"`
 }
 
+// Model form to identify a model to remove.
+type ModelIDForm struct {
+	ID string `json:"id"`
+}
+
 // CreateModel registers a new model.
 func (c *Client) CreateModel(ctx context.Context, form ModelForm) (*ModelResponse, error) {
 	var resp ModelResponse
@@ -73,6 +78,8 @@ func (c *Client) UpdateModel(ctx context.Context, id string, form ModelForm) (*M
 
 // DeleteModel removes a model by identifier.
 func (c *Client) DeleteModel(ctx context.Context, id string) error {
-	query := url.Values{"id": []string{id}}
-	return c.do(ctx, http.MethodPost, "models/model/delete", query, nil, nil)
+	modelForm := ModelIDForm {
+		ID: id,
+	}
+	return c.do(ctx, http.MethodPost, "models/model/delete", nil, modelForm, nil)
 }
