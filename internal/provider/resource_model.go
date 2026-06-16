@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
@@ -46,6 +47,7 @@ type modelResourceModel struct {
 	SuggestionPrompts    types.List              `tfsdk:"suggestion_prompts"`
 	Tags                 types.List              `tfsdk:"tags"`
 	ToolIDs              types.List              `tfsdk:"tool_ids"`
+	FilterIDs            types.Set               `tfsdk:"filter_ids"`
 	DefaultFeatureIDs    types.List              `tfsdk:"default_feature_ids"`
 	Capabilities         *modelCapabilitiesModel `tfsdk:"capabilities"`
 }
@@ -105,6 +107,7 @@ type modelMetaState struct {
 	SuggestionPrompts types.List
 	Tags              types.List
 	ToolIDs           types.List
+	FilterIDs         types.Set
 	DefaultFeatureIDs types.List
 	Capabilities      *modelCapabilitiesModel
 }
@@ -216,6 +219,13 @@ func (r *modelResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Computed:      true,
 				Description:   "Identifiers of tools made available to the model.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+			},
+			"filter_ids": schema.SetAttribute{
+				ElementType:   types.StringType,
+				Optional:      true,
+				Computed:      true,
+				Description:   "Identifiers of filters applied to the model.",
+				PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()},
 			},
 			"default_feature_ids": schema.ListAttribute{
 				ElementType:   types.StringType,
@@ -580,6 +590,7 @@ func modelResponseToModel(ctx context.Context, apiClient *client.Client, resp *c
 		SuggestionPrompts:    metaState.SuggestionPrompts,
 		Tags:                 metaState.Tags,
 		ToolIDs:              metaState.ToolIDs,
+		FilterIDs:            metaState.FilterIDs,
 		DefaultFeatureIDs:    metaState.DefaultFeatureIDs,
 		Capabilities:         metaState.Capabilities,
 	}
@@ -769,6 +780,15 @@ func expandModelMeta(ctx context.Context, plan *modelResourceModel, diags *diag.
 			meta["toolIds"] = tools
 		} else {
 			meta["toolIds"] = []any{}
+		}
+	}
+	if !plan.FilterIDs.IsNull() && !plan.FilterIDs.IsUnknown() {
+		filters := expandStringSet(ctx, plan.FilterIDs, path.Root("filter_ids"), diags)
+		ensureMap()
+		if len(filters) > 0 {
+			meta["filterIds"] = filters
+		} else {
+			meta["filterIds"] = []any{}
 		}
 	}
 	if !plan.DefaultFeatureIDs.IsNull() && !plan.DefaultFeatureIDs.IsUnknown() {
@@ -1030,6 +1050,7 @@ func flattenModelMeta(ctx context.Context, data map[string]any) (modelMetaState,
 		SuggestionPrompts: types.ListNull(types.StringType),
 		Tags:              types.ListNull(types.StringType),
 		ToolIDs:           types.ListNull(types.StringType),
+		FilterIDs:         types.SetNull(types.StringType),
 		DefaultFeatureIDs: types.ListNull(types.StringType),
 		Capabilities:      nil,
 	}
@@ -1098,6 +1119,19 @@ func flattenModelMeta(ctx context.Context, data map[string]any) (modelMetaState,
 			delete(additional, "toolIds")
 		} else {
 			diags.AddError("Unexpected meta value", fmt.Sprintf("Expected meta.toolIds to be a list of strings, received %T", raw))
+		}
+	}
+	if raw, ok := data["filterIds"]; ok && raw != nil {
+		filters, convOK := toStringSlice(raw)
+		if convOK {
+			set, setDiags := types.SetValueFrom(ctx, types.StringType, filters)
+			diags.Append(setDiags...)
+			if !setDiags.HasError() {
+				state.FilterIDs = set
+			}
+			delete(additional, "filterIds")
+		} else {
+			diags.AddError("Unexpected meta value", fmt.Sprintf("Expected meta.filterIds to be a list of strings, received %T", raw))
 		}
 	}
 	if raw, ok := data["defaultFeatureIds"]; ok && raw != nil {
