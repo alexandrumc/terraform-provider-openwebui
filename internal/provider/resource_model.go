@@ -48,6 +48,7 @@ type modelResourceModel struct {
 	Tags                 types.List              `tfsdk:"tags"`
 	ToolIDs              types.List              `tfsdk:"tool_ids"`
 	FilterIDs            types.Set               `tfsdk:"filter_ids"`
+	DefaultFilterIDs     types.Set               `tfsdk:"default_filter_ids"`
 	DefaultFeatureIDs    types.List              `tfsdk:"default_feature_ids"`
 	Capabilities         *modelCapabilitiesModel `tfsdk:"capabilities"`
 }
@@ -108,6 +109,7 @@ type modelMetaState struct {
 	Tags              types.List
 	ToolIDs           types.List
 	FilterIDs         types.Set
+	DefaultFilterIDs  types.Set
 	DefaultFeatureIDs types.List
 	Capabilities      *modelCapabilitiesModel
 }
@@ -225,6 +227,13 @@ func (r *modelResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Optional:      true,
 				Computed:      true,
 				Description:   "Identifiers of filters applied to the model.",
+				PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()},
+			},
+			"default_filter_ids": schema.SetAttribute{
+				ElementType:   types.StringType,
+				Optional:      true,
+				Computed:      true,
+				Description:   "Filter identifiers enabled by default for the model.",
 				PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()},
 			},
 			"default_feature_ids": schema.ListAttribute{
@@ -591,6 +600,7 @@ func modelResponseToModel(ctx context.Context, apiClient *client.Client, resp *c
 		Tags:                 metaState.Tags,
 		ToolIDs:              metaState.ToolIDs,
 		FilterIDs:            metaState.FilterIDs,
+		DefaultFilterIDs:     metaState.DefaultFilterIDs,
 		DefaultFeatureIDs:    metaState.DefaultFeatureIDs,
 		Capabilities:         metaState.Capabilities,
 	}
@@ -789,6 +799,15 @@ func expandModelMeta(ctx context.Context, plan *modelResourceModel, diags *diag.
 			meta["filterIds"] = filters
 		} else {
 			meta["filterIds"] = []any{}
+		}
+	}
+	if !plan.DefaultFilterIDs.IsNull() && !plan.DefaultFilterIDs.IsUnknown() {
+		filters := expandStringSet(ctx, plan.DefaultFilterIDs, path.Root("default_filter_ids"), diags)
+		ensureMap()
+		if len(filters) > 0 {
+			meta["defaultFilterIds"] = filters
+		} else {
+			meta["defaultFilterIds"] = []any{}
 		}
 	}
 	if !plan.DefaultFeatureIDs.IsNull() && !plan.DefaultFeatureIDs.IsUnknown() {
@@ -1051,6 +1070,7 @@ func flattenModelMeta(ctx context.Context, data map[string]any) (modelMetaState,
 		Tags:              types.ListNull(types.StringType),
 		ToolIDs:           types.ListNull(types.StringType),
 		FilterIDs:         types.SetNull(types.StringType),
+		DefaultFilterIDs:  types.SetNull(types.StringType),
 		DefaultFeatureIDs: types.ListNull(types.StringType),
 		Capabilities:      nil,
 	}
@@ -1132,6 +1152,19 @@ func flattenModelMeta(ctx context.Context, data map[string]any) (modelMetaState,
 			delete(additional, "filterIds")
 		} else {
 			diags.AddError("Unexpected meta value", fmt.Sprintf("Expected meta.filterIds to be a list of strings, received %T", raw))
+		}
+	}
+	if raw, ok := data["defaultFilterIds"]; ok && raw != nil {
+		filters, convOK := toStringSlice(raw)
+		if convOK {
+			set, setDiags := types.SetValueFrom(ctx, types.StringType, filters)
+			diags.Append(setDiags...)
+			if !setDiags.HasError() {
+				state.DefaultFilterIDs = set
+			}
+			delete(additional, "defaultFilterIds")
+		} else {
+			diags.AddError("Unexpected meta value", fmt.Sprintf("Expected meta.defaultFilterIds to be a list of strings, received %T", raw))
 		}
 	}
 	if raw, ok := data["defaultFeatureIds"]; ok && raw != nil {
